@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Tenants - Rental Management System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Tenants</h1>
+    <p><a href="/tenants/add">Add Tenant</a> | <a href="/dashboard">Dashboard</a></p>
+    <table border="1" cellpadding="8">
+        <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Status</th></tr>
+        <tr th:each="t : ${tenants}">
+            <td th:text="${t.tenantId}"></td>
+            <td th:text="${t.fullName}"></td>
+            <td th:text="${t.phone}"></td>
+            <td th:text="${t.email}"></td>
+            <td th:text="${t.status}"></td>
+        </tr>
+    </table>
+</body>
+</html>

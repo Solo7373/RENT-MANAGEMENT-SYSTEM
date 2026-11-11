@@ -1,0 +1,265 @@
+/* ============================================================
+   RENTAL MANAGEMENT SYSTEM - Modern Desktop Styles
+   ============================================================ */
+
+.root {
+    -fx-font-family: 'Segoe UI', 'Arial', sans-serif;
+    -fx-font-size: 14px;
+    -fx-background-color: #F5F7FA;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+    -fx-background-color: linear-gradient(to bottom, #0D47A1, #1565C0);
+    -fx-padding: 20px 0;
+    -fx-min-width: 220px;
+    -fx-max-width: 220px;
+}
+
+.sidebar-title {
+    -fx-text-fill: white;
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 20px 20px 20px;
+}
+
+.sidebar-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #BBDEFB;
+    -fx-font-size: 14px;
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 12px 20px;
+    -fx-cursor: hand;
+    -fx-background-radius: 0;
+    -fx-border-width: 0;
+}
+
+.sidebar-button:hover {
+    -fx-background-color: rgba(255,255,255,0.1);
+    -fx-text-fill: white;
+}
+
+.sidebar-button-active {
+    -fx-background-color: rgba(255,255,255,0.15);
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+/* ---------- Top Bar ---------- */
+.top-bar {
+    -fx-background-color: white;
+    -fx-padding: 15px 25px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 8, 0, 0, 2);
+}
+
+.top-bar-title {
+    -fx-text-fill: #1976D2;
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+}
+
+.top-bar-user {
+    -fx-text-fill: #666666;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+/* ---------- Login ---------- */
+.login-card {
+    -fx-background-color: white;
+    -fx-background-radius: 16px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 20, 0, 0, 5);
+}
+
+.login-title {
+    -fx-text-fill: #1976D2;
+}
+
+.login-subtitle {
+    -fx-text-fill: #666666;
+}
+
+.login-check {
+    -fx-text-fill: #666666;
+    -fx-font-size: 12px;
+}
+
+/* ---------- Cards ---------- */
+.card {
+    -fx-background-color: white;
+    -fx-background-radius: 12px;
+    -fx-padding: 20px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 12, 0, 0, 4);
+}
+
+.card-title {
+    -fx-text-fill: #1976D2;
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+}
+
+/* ---------- Buttons ---------- */
+.button {
+    -fx-cursor: hand;
+    -fx-background-radius: 8px;
+    -fx-font-weight: bold;
+    -fx-padding: 8px 16px;
+}
+
+.btn-primary {
+    -fx-background-color: #1976D2;
+    -fx-text-fill: white;
+}
+
+.btn-primary:hover {
+    -fx-background-color: #1565C0;
+}
+
+.btn-success {
+    -fx-background-color: #388E3C;
+    -fx-text-fill: white;
+}
+
+.btn-success:hover {
+    -fx-background-color: #2E7D32;
+}
+
+.btn-danger {
+    -fx-background-color: #D32F2F;
+    -fx-text-fill: white;
+}
+
+.btn-danger:hover {
+    -fx-background-color: #C62828;
+}
+
+.btn-secondary {
+    -fx-background-color: #E0E0E0;
+    -fx-text-fill: #333;
+}
+
+.btn-secondary:hover {
+    -fx-background-color: #BDBDBD;
+}
+
+.btn-back {
+    -fx-background-color: transparent;
+    -fx-text-fill: #1976D2;
+    -fx-font-weight: bold;
+    -fx-padding: 4px 8px;
+}
+
+/* ---------- Text Fields ---------- */
+.text-field, .password-field, .combo-box {
+    -fx-background-radius: 8px;
+    -fx-border-color: #E0E0E0;
+    -fx-border-radius: 8px;
+    -fx-padding: 8px 12px;
+}
+
+.text-field:focused, .password-field:focused, .combo-box:focused {
+    -fx-border-color: #1976D2;
+    -fx-border-width: 2px;
+}
+
+/* ---------- Table ---------- */
+.table-view {
+    -fx-background-color: white;
+    -fx-background-radius: 8px;
+    -fx-border-color: #E0E0E0;
+    -fx-border-radius: 8px;
+    -fx-border-width: 1px;
+}
+
+.table-view .column-header {
+    -fx-background-color: #1976D2;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 10px;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.table-row-cell {
+    -fx-cell-size: 40px;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: #FAFAFA;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: #E3F2FD;
+}
+
+.table-row-cell:hover {
+    -fx-background-color: #F0F7FF;
+}
+
+/* ---------- Labels ---------- */
+.label-title {
+    -fx-text-fill: #1976D2;
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.label-subtitle {
+    -fx-text-fill: #666;
+    -fx-font-size: 14px;
+}
+
+.label-section {
+    -fx-text-fill: #333;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+/* ---------- Stats Cards ---------- */
+.stat-card {
+    -fx-background-color: white;
+    -fx-background-radius: 12px;
+    -fx-padding: 20px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 12, 0, 0, 4);
+    -fx-min-width: 180px;
+}
+
+.stat-value {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1976D2;
+}
+
+.stat-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #666;
+}
+
+.stat-icon {
+    -fx-font-size: 28px;
+}
+
+/* ---------- Scroll ---------- */
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+
+/* ---------- Form Box ---------- */
+.form-box {
+    -fx-background-color: #F5F7FA;
+    -fx-background-radius: 8px;
+    -fx-padding: 15px;
+    -fx-spacing: 10px;
+}
+
+/* ---------- Alert ---------- */
+.alert {
+    -fx-background-color: white;
+}

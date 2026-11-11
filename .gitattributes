@@ -1,0 +1,14 @@
+* text=auto
+*.java text
+*.md text
+*.xml text
+*.properties text
+*.css text
+*.html text
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.jar binary
+*.ico binary
+*.png binary
+*.sqlite binary

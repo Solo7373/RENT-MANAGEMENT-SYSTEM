@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Room - Rental Management System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Add Room</h1>
+    <form method="post" action="/rooms/add" th:object="${room}">
+        <select th:field="*{property}" required>
+            <option th:each="p : ${properties}" th:value="${p.propertyId}" th:text="${p.name}"></option>
+        </select>
+        <input type="text" th:field="*{roomNumber}" placeholder="Room Number" required>
+        <input type="text" th:field="*{roomType}" placeholder="Room Type (e.g., Single)">
+        <input type="number" th:field="*{rentAmount}" placeholder="Rent Amount (UGX)" required>
+        <button type="submit">Save</button>
+    </form>
+    <p><a href="/rooms">Back to Rooms</a></p>
+</body>
+</html>

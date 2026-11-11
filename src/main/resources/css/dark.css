@@ -1,0 +1,247 @@
+/* ============================================================
+   RENTAL MANAGEMENT SYSTEM - DARK MODE
+   Loaded AFTER style.css - overrides the light palette.
+   ============================================================ */
+
+.root {
+    -fx-background-color: #12121E;
+}
+
+/* ---------- Top Bar ---------- */
+.top-bar {
+    -fx-background-color: #1B1B2F;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.55), 8, 0, 0, 2);
+}
+
+.top-bar-title {
+    -fx-text-fill: #90CAF9;
+}
+
+.top-bar-user {
+    -fx-text-fill: #C7D0DB;
+}
+
+/* ---------- Login ---------- */
+.login-card {
+    -fx-background-color: #1B1B2F;
+}
+
+.login-title {
+    -fx-text-fill: #90CAF9;
+}
+
+.login-subtitle,
+.login-check {
+    -fx-text-fill: #9AA5B1;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+    -fx-background-color: linear-gradient(to bottom, #0B1020, #131A2E);
+}
+
+.sidebar-title {
+    -fx-text-fill: #E3F2FD;
+}
+
+.sidebar-button {
+    -fx-text-fill: #9FB3C8;
+}
+
+.sidebar-button:hover {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-text-fill: white;
+}
+
+.sidebar-button-active {
+    -fx-background-color: rgba(33,150,243,0.28);
+    -fx-text-fill: white;
+}
+
+/* ---------- Cards ---------- */
+.card {
+    -fx-background-color: #1B1B2F;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.65), 12, 0, 0, 4);
+}
+
+.card-title,
+.label-title {
+    -fx-text-fill: #90CAF9;
+}
+
+.label-subtitle {
+    -fx-text-fill: #9AA5B1;
+}
+
+.label-section {
+    -fx-text-fill: #E0E0E0;
+}
+
+.label {
+    -fx-text-fill: #E6E6F0;
+}
+
+/* ---------- Stats ---------- */
+.stat-card {
+    -fx-background-color: #232338;
+}
+
+.stat-value {
+    -fx-text-fill: #64B5F6;
+}
+
+.stat-label {
+    -fx-text-fill: #9AA5B1;
+}
+
+/* ---------- Inputs ---------- */
+.text-field, .password-field, .combo-box {
+    -fx-background-color: #2A2A40;
+    -fx-text-fill: #E6E6F0;
+    -fx-prompt-text-fill: #8A8AA8;
+    -fx-border-color: #3A3A55;
+}
+
+.text-field:focused, .password-field:focused, .combo-box:focused {
+    -fx-border-color: #42A5F5;
+}
+
+.combo-box .list-cell {
+    -fx-text-fill: #E6E6F0;
+    -fx-background-color: #2A2A40;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: #2A2A40;
+    -fx-border-color: #3A3A55;
+}
+
+.combo-box-popup .list-cell {
+    -fx-background-color: #2A2A40;
+}
+
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: #39405C;
+}
+
+/* ---------- Tables ---------- */
+.table-view {
+    -fx-background-color: #1B1B2F;
+    -fx-border-color: #3A3A55;
+}
+
+.table-view .column-header {
+    -fx-background-color: #0D47A1;
+}
+
+.table-row-cell {
+    -fx-background-color: #1F1F33;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: #232338;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: #2D4A72;
+}
+
+.table-row-cell:hover {
+    -fx-background-color: #26334D;
+}
+
+.table-cell {
+    -fx-text-fill: #E6E6F0;
+}
+
+.table-view .placeholder .label {
+    -fx-text-fill: #7A7A95;
+}
+
+/* ---------- Buttons ---------- */
+.btn-secondary {
+    -fx-background-color: #2F3A56;
+    -fx-text-fill: #DCE6F2;
+}
+
+.btn-secondary:hover {
+    -fx-background-color: #3B4870;
+}
+
+.btn-back {
+    -fx-text-fill: #64B5F6;
+}
+
+/* ---------- Forms ---------- */
+.form-box {
+    -fx-background-color: #232338;
+}
+
+/* ---------- Dialogs ---------- */
+.dialog-pane {
+    -fx-background-color: #1B1B2F;
+}
+
+.dialog-pane .label {
+    -fx-text-fill: #E6E6F0;
+}
+
+.dialog-pane .button {
+    -fx-background-color: #2F3A56;
+    -fx-text-fill: #DCE6F2;
+}
+
+/* ---------- Check box ---------- */
+.check-box {
+    -fx-text-fill: #E6E6F0;
+}
+
+.check-box .box {
+    -fx-background-color: #2A2A40;
+    -fx-border-color: #3A3A55;
+}
+
+/* ---------- Tabs ---------- */
+.tab-pane .tab {
+    -fx-background-color: #232338;
+}
+
+.tab-pane .tab:selected {
+    -fx-background-color: #2D4A72;
+}
+
+.tab-pane .tab .tab-label {
+    -fx-text-fill: #9FB3C8;
+    -fx-font-weight: bold;
+}
+
+.tab-pane .tab:selected .tab-label {
+    -fx-text-fill: white;
+}
+
+.tab-pane .tab-header-area .tab-header-background {
+    -fx-background-color: #1B1B2F;
+}
+
+.tab-pane .tab-content-area {
+    -fx-background-color: #1B1B2F;
+}
+
+/* ---------- Scroll ---------- */
+.scroll-pane,
+.scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar {
+    -fx-background-color: #1B1B2F;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #3A3A55;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: #1B1B2F;
+}

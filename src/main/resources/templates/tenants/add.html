@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Tenant - Rental Management System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Add Tenant</h1>
+    <form method="post" action="/tenants/add" th:object="${tenant}">
+        <input type="text" th:field="*{fullName}" placeholder="Full Name" required>
+        <input type="text" th:field="*{phone}" placeholder="Phone" required>
+        <input type="email" th:field="*{email}" placeholder="Email">
+        <input type="text" th:field="*{idNumber}" placeholder="ID Number">
+        <input type="text" th:field="*{emergencyContact}" placeholder="Emergency Contact">
+        <input type="text" th:field="*{emergencyPhone}" placeholder="Emergency Phone">
+        <textarea th:field="*{notes}" placeholder="Notes"></textarea>
+        <button type="submit">Save</button>
+    </form>
+    <p><a href="/tenants">Back to Tenants</a></p>
+</body>
+</html>

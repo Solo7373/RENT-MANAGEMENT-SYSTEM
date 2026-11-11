@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Rooms - Rental Management System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Rooms</h1>
+    <p><a href="/rooms/add">Add Room</a> | <a href="/dashboard">Dashboard</a></p>
+    <table border="1" cellpadding="8">
+        <tr><th>ID</th><th>Room #</th><th>Type</th><th>Rent (UGX)</th><th>Status</th></tr>
+        <tr th:each="r : ${rooms}">
+            <td th:text="${r.roomId}"></td>
+            <td th:text="${r.roomNumber}"></td>
+            <td th:text="${r.roomType}"></td>
+            <td th:text="${r.rentAmount}"></td>
+            <td th:text="${r.status}"></td>
+        </tr>
+    </table>
+</body>
+</html>

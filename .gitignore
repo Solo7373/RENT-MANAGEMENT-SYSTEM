@@ -1,0 +1,49 @@
+# ---- Build output ----
+target/
+dist/
+build/
+out/
+
+# ---- Local runtime data ----
+/rentaldb.sqlite
+/rentaldb.sqlite-*
+/backups/
+/receipts/
+/reports/
+/documents/
+*.db-wal
+*.db-shm
+
+# ---- Logs and temporary files ----
+*.log
+*.tmp
+*.temp
+hs_err_pid*
+replay_pid*
+~$*
+
+# ---- IDE / OS ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+nbproject/
+nbbuild/
+nbdist/
+.settings/
+.project
+.classpath
+.factorypath
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- Secrets ----
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks

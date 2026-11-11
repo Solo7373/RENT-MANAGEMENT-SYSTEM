@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Property - Rental Management System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Add Property</h1>
+    <form method="post" action="/properties/add" th:object="${property}">
+        <input type="text" th:field="*{name}" placeholder="Property Name" required>
+        <input type="text" th:field="*{address}" placeholder="Address">
+        <textarea th:field="*{description}" placeholder="Description"></textarea>
+        <button type="submit">Save</button>
+    </form>
+    <p><a href="/properties">Back to Properties</a></p>
+</body>
+</html>

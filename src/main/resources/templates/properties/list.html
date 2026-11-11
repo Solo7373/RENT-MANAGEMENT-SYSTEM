@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Properties - Rental Management System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Properties</h1>
+    <p><a href="/properties/add">Add Property</a> | <a href="/dashboard">Dashboard</a></p>
+    <table border="1" cellpadding="8">
+        <tr><th>ID</th><th>Name</th><th>Address</th><th>Status</th></tr>
+        <tr th:each="p : ${properties}">
+            <td th:text="${p.propertyId}"></td>
+            <td th:text="${p.name}"></td>
+            <td th:text="${p.address}"></td>
+            <td th:text="${p.status}"></td>
+        </tr>
+    </table>
+</body>
+</html>
