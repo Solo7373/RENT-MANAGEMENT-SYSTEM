@@ -8,6 +8,7 @@ public class RentCharge {
 
     private Long chargeId;
     private Long tenancyId;
+    private Long tenantId;          // joined from the tenancy
     private String tenantName;      // joined for display
     private String roomNumber;      // joined for display
     private Double amount;
@@ -21,6 +22,8 @@ public class RentCharge {
     public void setChargeId(Long chargeId) { this.chargeId = chargeId; }
     public Long getTenancyId() { return tenancyId; }
     public void setTenancyId(Long tenancyId) { this.tenancyId = tenancyId; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
     public String getTenantName() { return tenantName; }
     public void setTenantName(String tenantName) { this.tenantName = tenantName; }
     public String getRoomNumber() { return roomNumber; }

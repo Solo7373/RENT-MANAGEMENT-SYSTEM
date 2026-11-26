@@ -53,7 +53,7 @@ public class RentChargeDAO {
     /** All charges with tenant and room details (newest period first). */
     public List<RentCharge> getAll() {
         List<RentCharge> charges = new ArrayList<>();
-        String sql = "SELECT c.*, tn.full_name AS tenant_name, r.room_number " +
+        String sql = "SELECT c.*, t.tenant_id AS tenant_id, tn.full_name AS tenant_name, r.room_number " +
                      "FROM rent_charges c " +
                      "JOIN tenancies t ON c.tenancy_id = t.tenancy_id " +
                      "JOIN tenants tn ON t.tenant_id = tn.tenant_id " +
@@ -311,7 +311,7 @@ public class RentChargeDAO {
 
     private List<RentCharge> queryCharges(String whereClause) {
         List<RentCharge> charges = new ArrayList<>();
-        String sql = "SELECT c.*, tn.full_name AS tenant_name, r.room_number " +
+        String sql = "SELECT c.*, t.tenant_id AS tenant_id, tn.full_name AS tenant_name, r.room_number " +
                      "FROM rent_charges c " +
                      "JOIN tenancies t ON c.tenancy_id = t.tenancy_id " +
                      "JOIN tenants tn ON t.tenant_id = tn.tenant_id " +
@@ -330,6 +330,7 @@ public class RentChargeDAO {
         RentCharge c = new RentCharge();
         c.setChargeId(rs.getLong("charge_id"));
         c.setTenancyId(rs.getLong("tenancy_id"));
+        try { c.setTenantId(rs.getLong("tenant_id")); } catch (SQLException e) {}
         try { c.setTenantName(rs.getString("tenant_name")); } catch (SQLException e) {}
         try { c.setRoomNumber(rs.getString("room_number")); } catch (SQLException e) {}
         c.setAmount(rs.getDouble("amount"));

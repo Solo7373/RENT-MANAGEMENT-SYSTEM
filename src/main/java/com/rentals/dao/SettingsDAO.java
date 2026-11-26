@@ -1,5 +1,6 @@
 package com.rentals.dao;
 
+import com.rentals.security.SecretStore;
 import com.rentals.settings.SystemSetting;
 import java.sql.*;
 import java.util.ArrayList;
@@ -56,6 +57,19 @@ public class SettingsDAO {
             return true;
         } catch (SQLException e) {
             System.err.println("Save setting error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Encrypts a credential with Windows DPAPI and stores the ciphertext.
+     * A blank value clears the saved credential.
+     */
+    public boolean saveSecret(String key, String plaintext, String description) {
+        try {
+            return save(key, SecretStore.encrypt(plaintext == null ? "" : plaintext), description);
+        } catch (RuntimeException e) {
+            System.err.println("Save encrypted setting error: " + e.getMessage());
             return false;
         }
     }

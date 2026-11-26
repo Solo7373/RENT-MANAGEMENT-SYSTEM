@@ -48,6 +48,23 @@ public class PaymentDAO {
         return payments;
     }
 
+    /** Gets one payment by ID (with its tenant name), or null. */
+    public Payment findById(Long paymentId) {
+        if (paymentId == null) return null;
+        String sql = "SELECT p.*, t.full_name AS tenant_name FROM payments p " +
+                     "LEFT JOIN tenants t ON p.tenant_id = t.tenant_id " +
+                     "WHERE p.payment_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setLong(1, paymentId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) return map(rs);
+        } catch (SQLException e) {
+            System.err.println("Get payment error: " + e.getMessage());
+        }
+        return null;
+    }
+
     /** Gets payments for one tenant. */
     public List<Payment> getByTenant(Long tenantId) {
         List<Payment> payments = new ArrayList<>();

@@ -125,6 +125,14 @@ public class TenantsView {
             TenantDocumentsDialog.show(stage, selected);
         });
 
+        Button commsBtn = new Button("💬 Communication History");
+        commsBtn.getStyleClass().add("btn-secondary");
+        commsBtn.setOnAction(e -> {
+            Tenant selected = table.getSelectionModel().getSelectedItem();
+            if (selected == null) { showAlert("Select a tenant first"); return; }
+            TenantCommunicationDialog.show(stage, selected);
+        });
+
         Button deleteBtn = new Button("🗑 Delete Tenant");
         deleteBtn.getStyleClass().add("btn-danger");
         deleteBtn.setOnAction(e -> {
@@ -147,7 +155,7 @@ public class TenantsView {
             }
         });
 
-        actionsBox.getChildren().addAll(docsBtn, deleteBtn);
+        actionsBox.getChildren().addAll(docsBtn, commsBtn, deleteBtn);
         root.getChildren().add(actionsBox);
 
         // ---------- Add / edit form ----------

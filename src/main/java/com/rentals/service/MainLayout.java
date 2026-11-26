@@ -54,6 +54,10 @@ public class MainLayout {
 
         buildUI();
         installKeyboardShortcuts();
+
+        // Opt-in background scanning while the admin is logged in. The actual
+        // sends only happen when reminder_auto_send_enabled is true.
+        ReminderScheduler.start();
     }
 
     private void buildUI() {
@@ -241,6 +245,7 @@ public class MainLayout {
     }
 
     private void handleLogout() {
+        ReminderScheduler.stop();
         AuditService.log("LOGOUT", "Admin logged out");
         new SessionService().destroySession();
         stage.close();

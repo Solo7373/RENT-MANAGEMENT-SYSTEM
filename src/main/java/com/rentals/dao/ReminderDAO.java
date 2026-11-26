@@ -89,15 +89,53 @@ public class ReminderDAO {
 
     /** Queues a reminder message for a tenant (status PENDING). */
     public boolean queueNotification(Long tenantId, String message, String channel) {
-        String sql = "INSERT INTO notification_logs (tenant_id, message, channel, status) VALUES (?, ?, ?, 'PENDING')";
+        return queueTrackedNotification(tenantId, null, null, null,
+            "REMINDER", channel, message, null) != null;
+    }
+
+    /**
+     * Queues a reminder with its tenant/lease/charge context and an optional
+     * dedupe key. Returns the notification ID, or null when the dedupe key
+     * already exists (another message for the same rule and charge was sent).
+     */
+    public Long queueTrackedNotification(Long tenantId, Long tenancyId, Long chargeId,
+                                         Long ruleId, String eventType, String channel,
+                                         String message, String dedupeKey) {
+        String sql = "INSERT INTO notification_logs (tenant_id, tenancy_id, charge_id, rule_id, " +
+                     "event_type, message, channel, status, dedupe_key) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setLong(1, tenantId);
-            pstmt.setString(2, message);
-            pstmt.setString(3, channel);
-            return pstmt.executeUpdate() > 0;
+            setNullableLong(pstmt, 1, tenantId);
+            setNullableLong(pstmt, 2, tenancyId);
+            setNullableLong(pstmt, 3, chargeId);
+            setNullableLong(pstmt, 4, ruleId);
+            pstmt.setString(5, eventType == null || eventType.isBlank() ? "REMINDER" : eventType);
+            pstmt.setString(6, message);
+            pstmt.setString(7, channel);
+            pstmt.setString(8, emptyToNull(dedupeKey));
+            pstmt.executeUpdate();
+            return DatabaseConnection.lastInsertId(conn);
         } catch (SQLException e) {
+            if (dedupeKey != null && e.getMessage() != null
+                && e.getMessage().toUpperCase().contains("UNIQUE")) {
+                return null;   // already queued or sent for this rule + charge
+            }
             System.err.println("Queue notification error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** True when this rule + charge combination already has a queued/sent message. */
+    public boolean dedupeExists(String dedupeKey) {
+        if (dedupeKey == null || dedupeKey.isBlank()) return false;
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(
+                 "SELECT 1 FROM notification_logs WHERE dedupe_key = ? LIMIT 1")) {
+            pstmt.setString(1, dedupeKey);
+            return pstmt.executeQuery().next();
+        } catch (SQLException e) {
+            System.err.println("Check notification dedupe error: " + e.getMessage());
             return false;
         }
     }
@@ -109,12 +147,24 @@ public class ReminderDAO {
 
     /** Marks a notification as sent and records the destination used. */
     public boolean markSent(Long notificationId, String recipient) {
+        return markSent(notificationId, recipient, null, null, null);
+    }
+
+    /** Marks a notification as sent and stores provider delivery metadata. */
+    public boolean markSent(Long notificationId, String recipient, String provider,
+                            String providerMessageId, String providerStatus) {
+        String sql = "UPDATE notification_logs SET status = 'SENT', sent_at = datetime('now'), " +
+                     "recipient = COALESCE(?, recipient), error_message = NULL, " +
+                     "provider = COALESCE(?, provider), " +
+                     "provider_message_id = COALESCE(?, provider_message_id), " +
+                     "provider_status = COALESCE(?, provider_status) WHERE notification_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(
-                 "UPDATE notification_logs SET status = 'SENT', sent_at = datetime('now'), " +
-                 "recipient = COALESCE(?, recipient), error_message = NULL WHERE notification_id = ?")) {
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, recipient);
-            pstmt.setLong(2, notificationId);
+            pstmt.setString(2, emptyToNull(provider));
+            pstmt.setString(3, emptyToNull(providerMessageId));
+            pstmt.setString(4, emptyToNull(providerStatus));
+            pstmt.setLong(5, notificationId);
             return pstmt.executeUpdate() > 0;
         } catch (SQLException e) {
             System.err.println("Mark notification sent error: " + e.getMessage());
@@ -124,13 +174,30 @@ public class ReminderDAO {
 
     /** Marks a notification as failed and stores the provider error. */
     public boolean markFailed(Long notificationId, String recipient, String error) {
+        return markFailed(notificationId, recipient, error, null, null, null);
+    }
+
+    /**
+     * Marks a notification as failed and stores provider details. The dedupe
+     * key is cleared so the scheduler can try the same rule + charge again on
+     * a later run instead of treating the failed attempt as delivered.
+     */
+    public boolean markFailed(Long notificationId, String recipient, String error,
+                              String provider, String providerMessageId,
+                              String providerStatus) {
+        String sql = "UPDATE notification_logs SET status = 'FAILED', recipient = ?, " +
+                     "error_message = ?, sent_at = datetime('now'), dedupe_key = NULL, " +
+                     "provider = COALESCE(?, provider), " +
+                     "provider_message_id = COALESCE(?, provider_message_id), " +
+                     "provider_status = COALESCE(?, provider_status) WHERE notification_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(
-                 "UPDATE notification_logs SET status = 'FAILED', recipient = ?, " +
-                 "error_message = ?, sent_at = datetime('now') WHERE notification_id = ?")) {
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, recipient);
             pstmt.setString(2, error);
-            pstmt.setLong(3, notificationId);
+            pstmt.setString(3, emptyToNull(provider));
+            pstmt.setString(4, emptyToNull(providerMessageId));
+            pstmt.setString(5, emptyToNull(providerStatus));
+            pstmt.setLong(6, notificationId);
             return pstmt.executeUpdate() > 0;
         } catch (SQLException e) {
             System.err.println("Mark notification failed error: " + e.getMessage());
@@ -154,15 +221,39 @@ public class ReminderDAO {
     private NotificationLog mapLog(ResultSet rs) throws SQLException {
         NotificationLog n = new NotificationLog();
         n.setNotificationId(rs.getLong("notification_id"));
-        n.setTenantId(rs.getLong("tenant_id"));
+        n.setTenantId(nullableLong(rs, "tenant_id"));
+        n.setTenancyId(nullableLong(rs, "tenancy_id"));
+        n.setChargeId(nullableLong(rs, "charge_id"));
+        n.setPaymentId(nullableLong(rs, "payment_id"));
+        n.setRuleId(nullableLong(rs, "rule_id"));
         try { n.setTenantName(rs.getString("tenant_name")); } catch (SQLException e) {}
         n.setMessage(rs.getString("message"));
         n.setChannel(rs.getString("channel"));
         n.setStatus(rs.getString("status"));
         try { n.setRecipient(rs.getString("recipient")); } catch (SQLException e) {}
         try { n.setErrorMessage(rs.getString("error_message")); } catch (SQLException e) {}
+        try { n.setEventType(rs.getString("event_type")); } catch (SQLException e) {}
+        try { n.setProvider(rs.getString("provider")); } catch (SQLException e) {}
+        try { n.setProviderMessageId(rs.getString("provider_message_id")); } catch (SQLException e) {}
+        try { n.setProviderStatus(rs.getString("provider_status")); } catch (SQLException e) {}
+        try { n.setDedupeKey(rs.getString("dedupe_key")); } catch (SQLException e) {}
         n.setSentAt(rs.getString("sent_at"));
         n.setCreatedAt(rs.getString("created_at"));
         return n;
+    }
+
+    private void setNullableLong(PreparedStatement pstmt, int index, Long value)
+            throws SQLException {
+        if (value == null) pstmt.setNull(index, Types.INTEGER);
+        else pstmt.setLong(index, value);
+    }
+
+    private Long nullableLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

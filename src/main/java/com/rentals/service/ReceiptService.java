@@ -40,13 +40,18 @@ public class ReceiptService {
 
     private final RentChargeDAO rentChargeDAO = new RentChargeDAO();
 
+    /** Stable receipt number used on the PDF and in receipt SMS messages. */
+    public static String receiptNumber(Payment payment) {
+        String datePart = (payment.getPaymentDate() == null ? LocalDate.now().toString()
+            : payment.getPaymentDate()).replace("-", "");
+        return AppSettings.receiptPrefix() + "-" + datePart + "-"
+            + String.format("%05d", payment.getPaymentId());
+    }
+
     /** Creates the receipt PDF and returns its path. */
     public Path generate(Payment payment) throws Exception {
         Path dir = AppPaths.receiptsDir();
-        String datePart = (payment.getPaymentDate() == null ? LocalDate.now().toString()
-            : payment.getPaymentDate()).replace("-", "");
-        String receiptNo = AppSettings.receiptPrefix() + "-" + datePart + "-"
-            + String.format("%05d", payment.getPaymentId());
+        String receiptNo = receiptNumber(payment);
         Path file = dir.resolve("receipt-" + receiptNo + ".pdf");
 
         Document document = new Document(PageSize.A4, 50, 50, 45, 45);

@@ -1,5 +1,7 @@
+import com.rentals.communications.CommunicationLog;
 import com.rentals.config.AppPaths;
 import com.rentals.config.DatabaseInitializer;
+import com.rentals.dao.CommunicationLogDAO;
 import com.rentals.dao.DatabaseConnection;
 import com.rentals.dao.ExpenseDAO;
 import com.rentals.dao.PaymentDAO;
@@ -12,12 +14,15 @@ import com.rentals.documents.TenantDocument;
 import com.rentals.expenses.Expense;
 import com.rentals.notifications.NotificationLog;
 import com.rentals.payments.Payment;
+import com.rentals.reminders.ReminderRule;
+import com.rentals.security.SecretStore;
 import com.rentals.service.BackupService;
 import com.rentals.service.CloudBackupService;
 import com.rentals.service.DocumentService;
 import com.rentals.service.MessagingService;
 import com.rentals.service.NotificationService;
 import com.rentals.service.ReceiptService;
+import com.rentals.service.ReminderScheduler;
 import com.rentals.service.ReportExportService;
 import com.rentals.settings.AppSettings;
 import com.rentals.tenancies.Tenancy;
@@ -55,8 +60,44 @@ public final class NowPhaseSmokeTest {
         check("default due day seeded", AppSettings.dueDay() == 5);
         check("default currency seeded", AppSettings.currency().equals("UGX"));
 
-        // ---------- Configurable billing / company ----------
+        check("automatic sending is off by default", !AppSettings.reminderAutoSendEnabled());
+        check("tenant tracking is on by default", AppSettings.autoTrackEnabled());
+        check("scheduler interval seeded", AppSettings.reminderSchedulerMinutes() == 15);
+        check("Africa's Talking defaults to production",
+            AppSettings.smsEnvironment().equals("PRODUCTION"));
+
+        // ---------- Credential encryption (Windows DPAPI) ----------
         SettingsDAO settingsDAO = new SettingsDAO();
+        String encrypted = SecretStore.encrypt("super-secret-key");
+        check("credential is encrypted at rest",
+            encrypted.startsWith("dpapi:") && !encrypted.contains("super-secret"));
+        check("encrypted credential decrypts",
+            SecretStore.decrypt(encrypted).equals("super-secret-key"));
+        check("masked credential hides the key",
+            SecretStore.mask("super-secret-key").endsWith("-key")
+                && !SecretStore.mask("super-secret-key").contains("super-secret"));
+
+        check("encrypted setting saved",
+            settingsDAO.saveSecret("sms_api_key", "saved-secret-key", "test"));
+        AppSettings.reload();
+        String rawSecret = settingsDAO.get("sms_api_key");
+        check("saved credential stored as DPAPI ciphertext", SecretStore.isEncrypted(rawSecret));
+        check("saved credential available through settings",
+            AppSettings.smsApiKey().equals("saved-secret-key"));
+        check("masked summary does not reveal the key",
+            AppSettings.smsApiKeySummary().contains("••••")
+                && !AppSettings.smsApiKeySummary().contains("saved-secret-key"));
+
+        settingsDAO.save("sms_api_key", "legacy-plain-key", "test");
+        SecretStore.migrateStoredSecrets();
+        String migratedSecret = settingsDAO.get("sms_api_key");
+        check("legacy plain-text credential encrypted in place",
+            SecretStore.isEncrypted(migratedSecret));
+        check("migrated credential still decrypts",
+            SecretStore.decrypt(migratedSecret).equals("legacy-plain-key"));
+        AppSettings.reload();
+
+        // ---------- Configurable billing / company ----------
         settingsDAO.save("company_name", "Acme Rentals", "test");
         settingsDAO.save("company_address", "12 Test Road, Kampala", "test");
         settingsDAO.save("company_phone", "+256 700 111 222", "test");
@@ -197,9 +238,26 @@ public final class NowPhaseSmokeTest {
             exchange.sendResponseHeaders(500, reply.length);
             try (var out = exchange.getResponseBody()) { out.write(reply); }
         });
+        mock.createContext("/health", exchange -> {
+            if ("HEAD".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+                return;
+            }
+            byte[] reply = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, reply.length);
+            try (var out = exchange.getResponseBody()) { out.write(reply); }
+        });
         mock.start();
         int gatewayPort = mock.getAddress().getPort();
         String gatewayUrl = "http://127.0.0.1:" + gatewayPort;
+
+        MessagingService.TestResult genericConnection = MessagingService.testConnection(
+            new MessagingService.SmsConfig(true, MessagingService.SmsProvider.GENERIC,
+                MessagingService.Environment.PRODUCTION, "", "", "", "",
+                gatewayUrl + "/health", "256"));
+        check("generic gateway connection test succeeds", genericConnection.success());
 
         Path cloudFolder = Files.createTempDirectory("rental-cloud");
         settingsDAO.save("admin_name", "Test Admin", "test");
@@ -208,13 +266,14 @@ public final class NowPhaseSmokeTest {
         settingsDAO.save("admin_whatsapp", "+256700123456", "test");
         settingsDAO.save("sms_enabled", "true", "test");
         settingsDAO.save("sms_provider", "GENERIC", "test");
-        settingsDAO.save("sms_api_key", "test-token", "test");
+        settingsDAO.save("sms_environment", "PRODUCTION", "test");
+        settingsDAO.saveSecret("sms_api_key", "test-token", "test");
         settingsDAO.save("sms_generic_url", gatewayUrl + "/sms", "test");
         settingsDAO.save("sms_country_code", "256", "test");
         settingsDAO.save("whatsapp_enabled", "true", "test");
         settingsDAO.save("whatsapp_api_url", gatewayUrl, "test");
         settingsDAO.save("whatsapp_phone_number_id", "test-phone-id", "test");
-        settingsDAO.save("whatsapp_access_token", "test-token", "test");
+        settingsDAO.saveSecret("whatsapp_access_token", "test-token", "test");
         settingsDAO.save("cloud_backup_enabled", "true", "test");
         settingsDAO.save("cloud_provider", "OTHER", "test");
         settingsDAO.save("cloud_account", "admin@acme.test", "test");
@@ -228,6 +287,11 @@ public final class NowPhaseSmokeTest {
         check("WhatsApp setup reported as configured", AppSettings.whatsappConfigured());
         check("cloud backup reported as configured", AppSettings.cloudBackupConfigured());
         check("integration setup flag saved", AppSettings.integrationSetupComplete());
+        check("SMS API key is encrypted after setup",
+            SecretStore.isEncrypted(settingsDAO.get("sms_api_key")));
+        check("encrypted SMS key is usable", AppSettings.smsApiKey().equals("test-token"));
+        check("WhatsApp token is encrypted after setup",
+            SecretStore.isEncrypted(settingsDAO.get("whatsapp_access_token")));
 
         check("local number normalizes with country code",
             MessagingService.normalizePhone("0700123456", "256").equals("+256700123456"));
@@ -244,6 +308,13 @@ public final class NowPhaseSmokeTest {
         check("SMS carried the reminder text",
             smsBody.get().contains("SMS gateway test"));
 
+        NotificationService.recordTestMessage("SMS", "+256700123456",
+            "SMS gateway test", smsResult);
+        CommunicationLogDAO communicationDAO = new CommunicationLogDAO();
+        check("test send recorded in communication log",
+            communicationDAO.getRecent(20).stream().anyMatch(entry ->
+                "TEST".equals(entry.getEventType()) && "SENT".equals(entry.getStatus())));
+
         MessagingService.Result whatsappResult = MessagingService.sendWhatsApp(
             MessagingService.WhatsAppConfig.fromSettings(), "+256700123456",
             "WhatsApp gateway test");
@@ -254,6 +325,7 @@ public final class NowPhaseSmokeTest {
 
         MessagingService.Result failedSms = MessagingService.sendSms(
             new MessagingService.SmsConfig(true, MessagingService.SmsProvider.GENERIC,
+                MessagingService.Environment.PRODUCTION,
                 "", "", "", "", gatewayUrl + "/fail", "256"),
             "+256700123456", "failure test");
         check("gateway HTTP errors are reported",
@@ -270,6 +342,14 @@ public final class NowPhaseSmokeTest {
         check("SMS recipient recorded", "0700000000".equals(storedSms.getRecipient()));
         check("tenant number normalized during delivery",
             smsBody.get().contains("+256700000000"));
+
+        List<CommunicationLog> timeline = communicationDAO.getByTenant(tenantId, 50);
+        check("SMS reminder recorded in tenant timeline",
+            timeline.stream().anyMatch(entry -> "REMINDER".equals(entry.getEventType())
+                && "SMS".equals(entry.getChannel()) && "SENT".equals(entry.getStatus())));
+        check("timeline stores the provider name",
+            timeline.stream().anyMatch(entry -> entry.getProvider() != null
+                && entry.getProvider().contains("Generic")));
 
         check("WhatsApp reminder queued",
             reminderDAO.queueNotification(tenantId, "Rent reminder via WhatsApp", "WHATSAPP"));
@@ -307,8 +387,66 @@ public final class NowPhaseSmokeTest {
         check("failed reminder records the recipient",
             "0700000000".equals(storedFail.getRecipient()));
 
+        List<CommunicationLog> afterFailure = communicationDAO.getByTenant(tenantId, 50);
+        check("failed reminder recorded in tenant timeline",
+            afterFailure.stream().anyMatch(entry -> "FAILED".equals(entry.getStatus())
+                && entry.getErrorMessage() != null
+                && entry.getErrorMessage().contains("HTTP 500")));
+
         settingsDAO.save("sms_generic_url", gatewayUrl + "/sms", "test");
         AppSettings.reload();
+
+        // ---------- Receipt SMS after payment verification ----------
+        NotificationService.SendResult receiptSms = NotificationService.sendReceipt(payment);
+        check("receipt SMS sent for verified payment", receiptSms.success());
+        check("receipt SMS contains the receipt number",
+            smsBody.get().contains("TST-RCPT")
+                && smsBody.get().contains("Test Tenant"));
+        check("receipt recorded in tenant timeline",
+            communicationDAO.getByTenant(tenantId, 50).stream().anyMatch(entry ->
+                "RECEIPT".equals(entry.getEventType())
+                    && payment.getPaymentId().equals(entry.getPaymentId())
+                    && "SENT".equals(entry.getStatus())));
+
+        // ---------- In-app reminder scheduler and dedupe ----------
+        ReminderScheduler.RunResult disabledRun = ReminderScheduler.runDueRemindersNow(true);
+        check("periodic scan respects the opt-in setting", !disabledRun.started());
+
+        execute("UPDATE reminder_rules SET enabled = 0");
+        ReminderRule schedulerRule = new ReminderRule(
+            99, -1, "SMS", "Scheduler test for {name}: {amount}");
+        check("scheduler test rule created", reminderDAO.createRule(schedulerRule));
+        execute("INSERT INTO rent_charges (tenancy_id, amount, paid_amount, due_date, " +
+            "status, period_month) VALUES (" + tenancy.getTenancyId() + ", 100000, 0, " +
+            "date('now', '-5 days'), 'PENDING', '2099-01')");
+
+        ReminderScheduler.RunResult firstRun = ReminderScheduler.runDueRemindersNow();
+        check("scheduler sent one due reminder",
+            firstRun.started() && firstRun.sent() == 1 && firstRun.failed() == 0);
+        check("scheduler rendered the tenant and balance",
+            smsBody.get().contains("Test Tenant")
+                && smsBody.get().contains("100,000"));
+        check("scheduler linked the message to its charge",
+            "1".equals(singleString("SELECT COUNT(*) FROM notification_logs " +
+                "WHERE charge_id IS NOT NULL AND dedupe_key IS NOT NULL")));
+        check("scheduler wrote the tenant timeline",
+            communicationDAO.getByTenant(tenantId, 50).stream().anyMatch(entry ->
+                entry.getNotificationId() != null && "REMINDER".equals(entry.getEventType())
+                    && "SENT".equals(entry.getStatus())));
+
+        ReminderScheduler.RunResult secondRun = ReminderScheduler.runDueRemindersNow();
+        check("scheduler dedupe prevents a duplicate send",
+            secondRun.started() && secondRun.sent() == 0 && secondRun.skipped() >= 1);
+
+        Long retryId = reminderDAO.queueTrackedNotification(tenantId,
+            tenancy.getTenancyId(), null, schedulerRule.getRuleId(),
+            "REMINDER", "SMS", "retry test", "retry:test");
+        check("dedupe key queued for retry test",
+            retryId != null && reminderDAO.dedupeExists("retry:test"));
+        reminderDAO.markFailed(retryId, "0700000000", "test failure",
+            "Generic HTTP gateway", "", "");
+        check("failed reminder clears its dedupe key",
+            !reminderDAO.dedupeExists("retry:test"));
 
         check("cloud folder test succeeds",
             CloudBackupService.testFolder(cloudFolder).success());

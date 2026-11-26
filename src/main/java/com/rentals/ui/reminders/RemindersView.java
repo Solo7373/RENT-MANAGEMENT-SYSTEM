@@ -6,6 +6,7 @@ import com.rentals.notifications.NotificationLog;
 import com.rentals.reminders.ReminderRule;
 import com.rentals.service.AuditService;
 import com.rentals.service.NotificationService;
+import com.rentals.service.ReminderScheduler;
 import com.rentals.settings.AppSettings;
 import com.rentals.tenants.Tenant;
 import com.rentals.ui.settings.IntegrationsSetupDialog;
@@ -34,6 +35,7 @@ public class RemindersView {
     private TableView<NotificationLog> logsTable;
     private Stage stage;
     private final Label configLabel = new Label();
+    private final Label schedulerLabel = new Label();
 
     public static Pane create(Stage stage, Runnable onBack) {
         return new RemindersView().build(stage, onBack);
@@ -56,6 +58,10 @@ public class RemindersView {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        Button runNowBtn = new Button("🚀 Run Due Reminders Now");
+        runNowBtn.getStyleClass().add("btn-primary");
+        runNowBtn.setOnAction(e -> runDueReminders(runNowBtn));
+
         Button setupBtn = new Button("⚙ Communication Setup");
         setupBtn.getStyleClass().add("btn-secondary");
         setupBtn.setOnAction(e -> {
@@ -67,12 +73,14 @@ public class RemindersView {
         backBtn.getStyleClass().add("btn-back");
         backBtn.setOnAction(e -> onBack.run());
 
-        header.getChildren().addAll(titleLabel, spacer, setupBtn, backBtn);
+        header.getChildren().addAll(titleLabel, spacer, runNowBtn, setupBtn, backBtn);
         root.getChildren().add(header);
 
         configLabel.getStyleClass().add("label-subtitle");
         configLabel.setWrapText(true);
-        root.getChildren().add(configLabel);
+        schedulerLabel.getStyleClass().add("label-subtitle");
+        schedulerLabel.setWrapText(true);
+        root.getChildren().addAll(configLabel, schedulerLabel);
 
         // ==================== REMINDER RULES ====================
         Label rulesTitle = new Label("Reminder Rules");
@@ -221,6 +229,18 @@ public class RemindersView {
         nStatusCol.setCellValueFactory(new PropertyValueFactory<>("status"));
         nStatusCol.setPrefWidth(90);
 
+        TableColumn<NotificationLog, String> eventCol = new TableColumn<>("Event");
+        eventCol.setCellValueFactory(new PropertyValueFactory<>("eventType"));
+        eventCol.setPrefWidth(90);
+
+        TableColumn<NotificationLog, String> providerCol = new TableColumn<>("Provider");
+        providerCol.setCellValueFactory(new PropertyValueFactory<>("provider"));
+        providerCol.setPrefWidth(150);
+
+        TableColumn<NotificationLog, String> providerIdCol = new TableColumn<>("Provider ID");
+        providerIdCol.setCellValueFactory(new PropertyValueFactory<>("providerMessageId"));
+        providerIdCol.setPrefWidth(140);
+
         TableColumn<NotificationLog, String> errorCol = new TableColumn<>("Last error");
         errorCol.setCellValueFactory(new PropertyValueFactory<>("errorMessage"));
         errorCol.setPrefWidth(200);
@@ -230,7 +250,7 @@ public class RemindersView {
         nDateCol.setPrefWidth(140);
 
         logsTable.getColumns().addAll(nidCol, tenantCol, recipientCol, nMessageCol,
-            nChannelCol, nStatusCol, errorCol, nDateCol);
+            nChannelCol, nStatusCol, eventCol, providerCol, providerIdCol, errorCol, nDateCol);
         root.getChildren().add(logsTable);
 
         // Send reminder form
@@ -343,11 +363,46 @@ public class RemindersView {
         new Thread(task, "notification-send").start();
     }
 
+    private void runDueReminders(Button button) {
+        button.setDisable(true);
+        schedulerLabel.setText("Scanning outstanding charges for due reminders…");
+        Task<ReminderScheduler.RunResult> task = new Task<>() {
+            @Override
+            protected ReminderScheduler.RunResult call() {
+                return ReminderScheduler.runDueRemindersNow();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            button.setDisable(false);
+            ReminderScheduler.RunResult result = task.getValue();
+            AuditService.log("REMINDER_RUN_NOW", result.detail());
+            refresh();
+            showInfo(result.detail()
+                + (result.failed() > 0
+                    ? "\n\nSome messages failed. Check the notification history for the provider error."
+                    : ""));
+        });
+        task.setOnFailed(e -> {
+            button.setDisable(false);
+            Throwable error = task.getException();
+            refresh();
+            showAlert("Reminder scan failed: "
+                + (error == null ? "unknown error" : error.getMessage()));
+        });
+        new Thread(task, "reminder-run-now").start();
+    }
+
     private void updateConfigLabel() {
         String sms;
-        if (AppSettings.smsConfigured()) sms = "SMS ready (" + smsProviderLabel() + ")";
-        else if (AppSettings.smsEnabled()) sms = "SMS enabled but incomplete";
-        else sms = "SMS disabled";
+        if (AppSettings.smsConfigured()) {
+            sms = "SMS ready (" + smsProviderLabel()
+                + ("AFRICAS_TALKING".equalsIgnoreCase(AppSettings.smsProvider())
+                    ? " " + AppSettings.smsEnvironment() : "") + ")";
+        } else if (AppSettings.smsEnabled()) {
+            sms = "SMS enabled but incomplete";
+        } else {
+            sms = "SMS disabled";
+        }
 
         String whatsapp;
         if (AppSettings.whatsappConfigured()) whatsapp = "WhatsApp ready";
@@ -356,6 +411,14 @@ public class RemindersView {
 
         configLabel.setText(sms + "  •  " + whatsapp
             + "  •  Sending needs internet. Use ⚙ Communication Setup to change these.");
+
+        String autoSend = AppSettings.reminderAutoSendEnabled() ? "ON" : "OFF";
+        schedulerLabel.setText("In-app scheduler: "
+            + (ReminderScheduler.isRunning() ? "running" : "stopped")
+            + "  •  Automatic sending: " + autoSend
+            + "  •  Checks every " + AppSettings.reminderSchedulerMinutes()
+            + " min while the app is open.  •  Last run: "
+            + ReminderScheduler.lastRunSummary());
     }
 
     private String smsProviderLabel() {

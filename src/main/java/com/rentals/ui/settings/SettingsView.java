@@ -6,6 +6,7 @@ import com.rentals.dao.AuditDAO;
 import com.rentals.dao.PaymentMethodDAO;
 import com.rentals.dao.SettingsDAO;
 import com.rentals.payments.PaymentMethod;
+import com.rentals.security.SecretStore;
 import com.rentals.service.AuditService;
 import com.rentals.service.AuthenticationService;
 import com.rentals.service.BackupService;
@@ -324,6 +325,8 @@ public class SettingsView {
         Label whatsappDetail = new Label();
         Label cloudValue = new Label();
         Label cloudDetail = new Label();
+        Label automationValue = new Label();
+        Label automationDetail = new Label();
 
         GridPane status = new GridPane();
         status.setHgap(18);
@@ -332,6 +335,7 @@ public class SettingsView {
         addStatusRow(status, 1, "SMS", smsValue, smsDetail);
         addStatusRow(status, 2, "WhatsApp", whatsappValue, whatsappDetail);
         addStatusRow(status, 3, "Cloud backup", cloudValue, cloudDetail);
+        addStatusRow(status, 4, "Automation", automationValue, automationDetail);
 
         Runnable refresh = () -> {
             String name = AppSettings.adminName();
@@ -356,8 +360,13 @@ public class SettingsView {
             }
             String sender = AppSettings.smsSenderId().isBlank()
                 ? AppSettings.smsFromNumber() : AppSettings.smsSenderId();
-            smsDetail.setText(providerLabel(AppSettings.smsProvider())
-                + (sender.isBlank() ? "" : " • sender " + sender));
+            String environment = "AFRICAS_TALKING".equalsIgnoreCase(AppSettings.smsProvider())
+                ? " • " + AppSettings.smsEnvironment() : "";
+            String keySummary = AppSettings.smsApiKeyRaw().isBlank()
+                ? " • no key saved"
+                : " • " + AppSettings.smsApiKeySummary();
+            smsDetail.setText(providerLabel(AppSettings.smsProvider()) + environment
+                + (sender.isBlank() ? "" : " • sender " + sender) + keySummary);
 
             if (AppSettings.whatsappConfigured()) {
                 whatsappValue.setText("Configured");
@@ -389,13 +398,22 @@ public class SettingsView {
                     + (AppSettings.cloudAccount().isBlank()
                         ? "" : " • " + AppSettings.cloudAccount())
                     + " • " + AppSettings.cloudFolder());
+
+            boolean autoSend = AppSettings.reminderAutoSendEnabled();
+            automationValue.setText(autoSend ? "Reminders on" : "Reminders off");
+            setStatusColor(automationValue, autoSend ? "#2E7D32" : "#607D8B");
+            automationDetail.setText("Tenant timeline: "
+                + (AppSettings.autoTrackEnabled() ? "on" : "off")
+                + " • scans every " + AppSettings.reminderSchedulerMinutes()
+                + " min while the app is open"
+                + " • voice/voicemail needs a hosted relay");
         };
         refresh.run();
 
         Button setupBtn = new Button("📡 Open Setup Wizard");
         setupBtn.getStyleClass().add("btn-primary");
         setupBtn.setOnAction(e -> {
-            IntegrationsSetupDialog.show(stage);
+            IntegrationsSetupDialog.show(stage, this::refreshSettings);
             refresh.run();
         });
 
@@ -418,9 +436,11 @@ public class SettingsView {
         actions.setAlignment(Pos.CENTER_LEFT);
 
         Label note = new Label(
-            "Credentials are stored locally in the app database, not on a RentalSys server. " +
-            "Use app-specific API keys/tokens, and keep this PC and its backups protected. " +
-            "SMS and WhatsApp both require an internet connection.");
+            "Credentials are stored locally in the app database, encrypted with Windows DPAPI " +
+            "and shown only as a masked suffix. They are tied to this Windows user and PC, so a " +
+            "backup restored elsewhere needs the keys again. SMS and WhatsApp both require an " +
+            "internet connection. Delivery reports, replies and voice callbacks need a hosted " +
+            "relay, which is not part of this desktop build.");
         note.getStyleClass().add("label-subtitle");
         note.setWrapText(true);
 
@@ -494,7 +514,16 @@ public class SettingsView {
         keyCol.setPrefWidth(200);
 
         TableColumn<SystemSetting, String> valueCol = new TableColumn<>("Value");
-        valueCol.setCellValueFactory(new PropertyValueFactory<>("settingValue"));
+        valueCol.setCellValueFactory(data -> {
+            SystemSetting setting = data.getValue();
+            if (SecretStore.isSecretKey(setting.getSettingKey())) {
+                String raw = setting.getSettingValue();
+                String display = raw == null || raw.isBlank()
+                    ? "" : SecretStore.savedSummary(raw);
+                return new SimpleStringProperty(display);
+            }
+            return new SimpleStringProperty(setting.getSettingValue());
+        });
         valueCol.setPrefWidth(250);
 
         TableColumn<SystemSetting, String> descCol = new TableColumn<>("Description");
@@ -539,18 +568,25 @@ public class SettingsView {
         Button saveBtn = new Button("Save Setting");
         saveBtn.getStyleClass().add("btn-success");
         saveBtn.setOnAction(e -> {
-            if (keyField.getText().isEmpty()) {
+            String key = keyField.getText().trim();
+            if (key.isEmpty()) {
                 showAlert("Setting key is required");
                 return;
             }
-            if (settingsDAO.save(keyField.getText().trim(), valueField.getText(), descField.getText())) {
-                AuditService.log("SETTING_SAVE", "Saved setting " + keyField.getText().trim());
+            boolean saved = SecretStore.isSecretKey(key)
+                ? settingsDAO.saveSecret(key, valueField.getText(), descField.getText())
+                : settingsDAO.save(key, valueField.getText(), descField.getText());
+            if (saved) {
+                AuditService.log("SETTING_SAVE", "Saved setting " + key);
                 AppSettings.reload();
                 refreshSettings();
                 refreshAudit();
                 keyField.clear();
                 valueField.clear();
                 descField.clear();
+            } else if (SecretStore.isSecretKey(key)) {
+                showAlert("The credential could not be encrypted with Windows DPAPI. "
+                    + "Check the console for details.");
             }
         });
 

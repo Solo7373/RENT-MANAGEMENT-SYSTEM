@@ -5,12 +5,14 @@ import com.rentals.dao.RentChargeDAO;
 import com.rentals.dao.TenantDAO;
 import com.rentals.payments.Payment;
 import com.rentals.service.AuditService;
+import com.rentals.service.NotificationService;
 import com.rentals.service.ReceiptService;
 import com.rentals.settings.AppSettings;
 import com.rentals.tenants.Tenant;
 import com.rentals.util.FormatUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -169,6 +171,10 @@ public class PaymentsView {
             }
         });
 
+        Button smsReceiptBtn = new Button("📱 SMS Receipt");
+        smsReceiptBtn.getStyleClass().add("btn-secondary");
+        smsReceiptBtn.setOnAction(e -> sendReceiptSms(smsReceiptBtn));
+
         Button lateFeesBtn = new Button("⏰ Apply Late Fees");
         lateFeesBtn.getStyleClass().add("btn-secondary");
         lateFeesBtn.setOnAction(e -> {
@@ -227,7 +233,8 @@ public class PaymentsView {
             info.showAndWait();
         });
 
-        actionsBox.getChildren().addAll(verifyBtn, receiptBtn, lateFeesBtn, deleteBtn, generateChargesBtn);
+        actionsBox.getChildren().addAll(verifyBtn, receiptBtn, smsReceiptBtn,
+            lateFeesBtn, deleteBtn, generateChargesBtn);
         root.getChildren().add(actionsBox);
 
         // ---------- Record payment form ----------
@@ -305,6 +312,52 @@ public class PaymentsView {
         refresh();
 
         return root;
+    }
+
+    /** Sends a receipt SMS for the selected verified payment. */
+    private void sendReceiptSms(Button button) {
+        Payment selected = table.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showAlert("Select a payment first");
+            return;
+        }
+        if (!"VERIFIED".equals(selected.getStatus())) {
+            showAlert("Verify the payment before sending a receipt SMS.");
+            return;
+        }
+
+        button.setDisable(true);
+        Task<NotificationService.SendResult> task = new Task<>() {
+            @Override
+            protected NotificationService.SendResult call() {
+                return NotificationService.sendReceipt(selected);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            button.setDisable(false);
+            NotificationService.SendResult result = task.getValue();
+            if (result.success()) {
+                AuditService.log("RECEIPT_SMS",
+                    "Sent receipt SMS for payment #" + selected.getPaymentId()
+                        + " to " + result.recipient());
+                showInfo("Receipt SMS sent to " + result.recipient()
+                    + ".\n\n" + result.detail());
+            } else {
+                AuditService.log("RECEIPT_SMS_FAIL",
+                    "Receipt SMS failed for payment #" + selected.getPaymentId()
+                        + ": " + result.detail());
+                showAlert("Receipt SMS failed:\n\n" + result.detail()
+                    + "\n\nThe attempt was recorded in the tenant's communication history.");
+            }
+            refresh();
+        });
+        task.setOnFailed(e -> {
+            button.setDisable(false);
+            Throwable error = task.getException();
+            showAlert("Receipt SMS failed: "
+                + (error == null ? "unknown error" : error.getMessage()));
+        });
+        new Thread(task, "receipt-sms").start();
     }
 
     /** Reloads payments and refreshes the summary cards. */

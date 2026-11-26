@@ -1,6 +1,7 @@
 package com.rentals.settings;
 
 import com.rentals.dao.SettingsDAO;
+import com.rentals.security.SecretStore;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -126,12 +127,31 @@ public final class AppSettings {
         return get("sms_provider", "AFRICAS_TALKING");
     }
 
+    /** Africa's Talking environment: SANDBOX or PRODUCTION. */
+    public static String smsEnvironment() {
+        return get("sms_environment", "PRODUCTION");
+    }
+
     public static String smsUsername() {
         return get("sms_username", "");
     }
 
+    /** Decrypted API key/token. Returns blank if it cannot be read on this PC. */
     public static String smsApiKey() {
+        return SecretStore.decrypt(get("sms_api_key", ""));
+    }
+
+    /** Raw value from the database; used only to show a masked summary. */
+    public static String smsApiKeyRaw() {
         return get("sms_api_key", "");
+    }
+
+    public static String smsApiKeySummary() {
+        return SecretStore.savedSummary(smsApiKeyRaw());
+    }
+
+    public static boolean smsApiKeyReadable() {
+        return SecretStore.canDecrypt(smsApiKeyRaw());
     }
 
     public static String smsSenderId() {
@@ -162,6 +182,31 @@ public final class AppSettings {
         };
     }
 
+    /* ---------- Communication automation ---------- */
+
+    /** When true, outbound SMS/WhatsApp attempts are recorded in tenant history. */
+    public static boolean autoTrackEnabled() {
+        return "true".equalsIgnoreCase(get("auto_track_enabled", "true"));
+    }
+
+    /** When true, due reminders are sent automatically while the app is open. */
+    public static boolean reminderAutoSendEnabled() {
+        return "true".equalsIgnoreCase(get("reminder_auto_send_enabled", "false"));
+    }
+
+    /** How often the in-app scheduler scans for due reminders (minutes). */
+    public static int reminderSchedulerMinutes() {
+        return Math.max(1, Math.min(1440, getInt("reminder_scheduler_minutes", 15)));
+    }
+
+    public static boolean voiceEnabled() {
+        return "true".equalsIgnoreCase(get("voice_enabled", "false"));
+    }
+
+    public static String smsVoiceNumber() {
+        return get("sms_voice_number", "");
+    }
+
     /* ---------- WhatsApp Cloud API ---------- */
 
     public static boolean whatsappEnabled() {
@@ -177,7 +222,19 @@ public final class AppSettings {
     }
 
     public static String whatsappAccessToken() {
+        return SecretStore.decrypt(get("whatsapp_access_token", ""));
+    }
+
+    public static String whatsappAccessTokenRaw() {
         return get("whatsapp_access_token", "");
+    }
+
+    public static String whatsappAccessTokenSummary() {
+        return SecretStore.savedSummary(whatsappAccessTokenRaw());
+    }
+
+    public static boolean whatsappAccessTokenReadable() {
+        return SecretStore.canDecrypt(whatsappAccessTokenRaw());
     }
 
     public static String whatsappBusinessNumber() {

@@ -77,25 +77,47 @@ Built with **Java 21**, **JavaFX 21**, **SQLite**, **BCrypt** and **OpenPDF**.
   - SMS gateway account details
   - WhatsApp Cloud API account details
   - the cloud provider, cloud account and local sync folder for backups
-- **SMS gateways**: Africa's Talking, Twilio or a generic HTTP gateway. The
-  admin's phone is used for test messages and system alerts; tenant phone numbers
-  are used for rent reminders.
+- **SMS gateways**: Africa's Talking (sandbox or production), Twilio or a generic
+  HTTP gateway. The admin's phone is used for test messages and system alerts;
+  tenant phone numbers are used for rent reminders and receipt SMS.
 - **WhatsApp**: Meta WhatsApp Cloud API with a phone number ID and access token.
   An approved template can be configured for messages outside Meta's 24-hour
   customer-service window.
-- **Reminders**: rules and notification history now store the recipient, status
-  and provider error. Select a queued reminder and press **Send Now** to deliver
+- **Test Connection** checks saved SMS credentials without sending a message:
+  Africa's Talking returns the account balance, Twilio returns the account status,
+  and a generic gateway is checked for reachability.
+- **Credential protection**: API keys and access tokens are encrypted with
+  Windows DPAPI (via JNA) before being stored in `system_settings`. Screens and
+  the raw settings table show only a masked suffix such as `••••abcd`. Older
+  plain-text keys are encrypted automatically at startup.
+- **Reminders**: rules and notification history store the recipient, status,
+  event type and provider error, plus the provider message ID and status when the
+  gateway returns one. Select a queued reminder and press **Send Now** to deliver
   it through the configured channel. Email has no delivery provider, so those
   entries can only be marked sent manually.
+- **In-app scheduler**: when automatic sending is enabled, the app scans for due
+  reminders every 15 minutes (configurable) while it is open. For each outstanding
+  charge it picks the latest applicable enabled rule with a configured channel and
+  sends once per rule + charge; a unique dedupe key prevents repeats, and failed
+  attempts clear the key so a later scan can retry. The Reminders screen also has
+  **Run Due Reminders Now**.
+- **Communication history**: every SMS/WhatsApp attempt can be written to a
+  per-tenant timeline (`communication_logs`) with event type, charge/payment
+  links, provider name, provider message ID and error. Manual receipt SMS and
+  test messages are always recorded; automatic reminder tracking follows the
+  `auto_track_enabled` setting. Open it from **Tenants > Communication History**.
+- **Receipt SMS**: after a payment is verified, **Payments > SMS Receipt** sends
+  the tenant a message containing the receipt number and amount.
 - **Cloud backup**: after each backup the zip and `.sha256` checksum are copied
   into a folder synchronised by the cloud provider. The copy is verified, old
   cloud backups are pruned by the same retention setting, and uploads can be
   automatic or run manually from Settings > Backup.
 - Phone numbers are normalised with the configured default country code, so local
   numbers such as `0700...` become `+256700...`.
-- Credentials are stored locally in `system_settings`, are masked in the setup
-  screens, and are **not encrypted**. Use app-specific API keys/tokens and keep
-  the PC and its backups protected.
+- DPAPI ties encrypted credentials to the current Windows user on this PC. A
+  database restored for a different Windows user or on another PC will show the
+  saved keys as unreadable and ask the admin to enter them again. Keep
+  app-specific keys and protect the PC and its backups.
 
 ### Packaging
 - `jpackage` build script produces a portable Windows app image with a bundled
@@ -119,6 +141,7 @@ Built with **Java 21**, **JavaFX 21**, **SQLite**, **BCrypt** and **OpenPDF**.
 | UI | JavaFX 21 (controls + FXML dependency, code-built views) |
 | Database | SQLite (file: `rentaldb.sqlite`) via `sqlite-jdbc` 3.44.1.0 |
 | Password hashing | BCrypt (`spring-security-crypto`) |
+| Credential encryption | Windows DPAPI via JNA 5.14.0 |
 | PDF | OpenPDF 1.3.43 |
 | Messaging | `java.net.http.HttpClient` (SMS gateways + WhatsApp Cloud API) |
 | Build | Maven |
@@ -223,13 +246,19 @@ Pick the gateway you already have an account with:
 
 | Provider | Details required |
 |---|---|
-| Africa's Talking | Username, API key, sender ID (optional) |
+| Africa's Talking | Username, API key, environment (sandbox/production), sender ID (optional) |
 | Twilio | Account SID, auth token, From number |
 | Generic HTTP | Endpoint URL; optional Bearer API key |
 
-Use **Send Test SMS** to send a message to the admin phone. Generic gateways
-receive JSON `{to, message, sender}` unless the URL contains `{to}` and
-`{message}` placeholders, in which case a GET request is made.
+Africa's Talking's **sandbox** only delivers to numbers added to the sandbox app
+in its dashboard. **Production** needs an approved sender ID and sufficient
+credit. Use **Test Connection** to check the credentials, then **Send Test SMS**
+to confirm delivery to the admin phone. Generic gateways receive JSON
+`{to, message, sender}` unless the URL contains `{to}` and `{message}`
+placeholders, in which case a GET request is made.
+
+API keys/tokens are encrypted with Windows DPAPI and shown only as a masked
+suffix. Leaving the key field blank keeps the saved value; typed keys replace it.
 
 ### WhatsApp
 You need a Meta business account with the WhatsApp Cloud API enabled:
@@ -251,6 +280,19 @@ Open **Reminders**, queue an SMS or WhatsApp message, select it in the history a
 press **Send Now**. The status, recipient and any provider error are written back
 to the notification row. Sending requires internet access. Email is not delivered
 by the app and can only be marked sent manually.
+
+Enable **Send due reminders automatically while this app is open** in the wizard
+to let the scheduler work. It scans every 15 minutes (setting
+`reminder_scheduler_minutes`) and also offers **Run Due Reminders Now** on the
+Reminders screen. The scheduler is not a background service: it stops when the
+app closes or the admin logs out. It selects the latest applicable enabled rule
+for each outstanding charge, skips channels that are not configured, and
+deduplicates by rule + charge. When a send fails, the dedupe key is cleared so
+the next scan can retry it.
+
+Every attempt can be reviewed in **Tenants > Communication History**, including
+the provider message ID and error. Delivery receipts, inbound replies and voice
+callbacks require a hosted webhook relay and are not part of this desktop build.
 
 ---
 
@@ -293,16 +335,19 @@ rental-management-system/
 │   │   └── DatabaseInitializer.java   # schema + seed data
 │   ├── settings/AppSettings.java      # cached typed settings
 │   ├── util/FormatUtils.java          # money formatting + open file
+│   ├── security/SecretStore.java      # Windows DPAPI credential encryption
 │   ├── dao/                           # JDBC data access objects
 │   │   ├── DatabaseConnection.java
 │   │   ├── PropertyDAO, RoomDAO, TenantDAO, TenancyDAO
 │   │   ├── PaymentDAO, PaymentMethodDAO, RentChargeDAO, ExpenseDAO
-│   │   ├── TenantDocumentDAO, ReminderDAO, AuditDAO, ReportDAO, SettingsDAO
+│   │   ├── TenantDocumentDAO, ReminderDAO, CommunicationLogDAO
+│   │   ├── AuditDAO, ReportDAO, SettingsDAO
 │   ├── service/
 │   │   ├── BackupService.java         # VACUUM INTO zip backups + checksums
 │   │   ├── CloudBackupService.java    # cloud-folder upload, verify, retention
 │   │   ├── MessagingService.java      # SMS gateways + WhatsApp Cloud API
 │   │   ├── NotificationService.java   # sends queued reminders, stores result
+│   │   ├── ReminderScheduler.java     # in-app due-reminder scans + dedupe
 │   │   ├── DocumentService.java       # tenant file validation/copy/open/delete
 │   │   ├── ReceiptService.java        # OpenPDF payment receipts
 │   │   ├── ReportExportService.java   # CSV + PDF report exports
@@ -314,7 +359,7 @@ rental-management-system/
 │   │   ├── settings/ (SettingsView, IntegrationsSetupDialog)
 │   ├── properties/, rooms/, tenants/, tenancies/
 │   ├── payments/, rent/, expenses/, reminders/, notifications/
-│   ├── documents/, audit/, settings/, users/
+│   ├── communications/, documents/, audit/, settings/, users/
 ├── src/main/resources/
 │   ├── css/style.css                  # light theme
 │   ├── css/dark.css                   # dark theme overrides
@@ -329,12 +374,12 @@ rental-management-system/
 
 ## Database Overview
 
-15 tables:
+16 tables:
 
 `users`, `properties`, `rooms`, `tenants`, `tenancies`, `rent_charges`,
 `payments`, `payment_allocations`, `payment_methods`, `expenses`,
-`tenant_documents`, `reminder_rules`, `notification_logs`, `audit_logs`,
-`system_settings`.
+`tenant_documents`, `reminder_rules`, `notification_logs`, `communication_logs`,
+`audit_logs`, `system_settings`.
 
 Key business rules:
 - Creating a tenancy marks its room `OCCUPIED`; terminating it marks the room
@@ -352,7 +397,7 @@ Key business rules:
 
 ## Verification
 
-A headless smoke test of the Now-phase backend passes **83/83 checks** against a
+A headless smoke test of the current backend passes **116/116 checks** against a
 throw-away database, covering:
 
 - configurable company/billing settings and currency formatting
@@ -363,10 +408,17 @@ throw-away database, covering:
 - CSV and PDF report exports (summary, outstanding, properties, revenue,
   expenses)
 - tenant document attach/list/delete and folder cleanup
-- admin contact, SMS/WhatsApp and cloud settings
+- admin contact, SMS/WhatsApp/cloud settings and setup completion
+- DPAPI credential encryption, decryption, masking and legacy plain-text migration
+- Africa's Talking sandbox/production defaults and provider result parsing
 - phone normalisation with the default country code
 - SMS and WhatsApp delivery through a local mock gateway (no live credentials)
-- reminder delivery status, recipient and provider-error recording
+- test connections, test-message logging and gateway HTTP error reporting
+- reminder delivery status, recipient, event type and provider-error recording
+- per-tenant communication history with tenant/charge/payment links
+- receipt SMS for verified payments (and rejection of unverified ones)
+- scheduler opt-in, latest-applicable-rule selection, template rendering,
+  rule + charge dedupe and retry after failure
 - failure handling for HTTP gateway errors and unconfigured email
 - consistent zip backups, checksum verification, retention pruning and document
   inclusion
@@ -374,10 +426,11 @@ throw-away database, covering:
 - update of the existing database and schema
 
 The UI was rendered off-screen and inspected for the Settings tabs (including
-Communication, Billing & Company and Backup) and the Reminders screen with its
-Send Now action and recipient/error columns. The packaged app image was launched
-and confirmed to create its database in `%APPDATA%\RentalManagementSystem` and to
-open the communication setup wizard on first login.
+Communication, Billing & Company and Backup), the Reminders screen with its
+Run Due Reminders Now action, provider columns and scheduler status, the tenant
+communication history, and the SMS Receipt action. The packaged app image was
+launched and confirmed to create its database in `%APPDATA%\RentalManagementSystem`,
+migrate the schema and open the communication setup wizard on first login.
 
 ---
 
@@ -385,11 +438,20 @@ open the communication setup wizard on first login.
 
 - The Windows `.exe`/`.msi` installer build needs WiX Toolset 3.x. Without it,
   the portable app image is the supported output.
-- Backups and the database are not encrypted, and provider credentials are stored
-  locally in `system_settings` without encryption.
+- The database, backups and documents are not encrypted. Provider API keys and
+  tokens are DPAPI-encrypted, which ties them to the current Windows user and PC;
+  restoring a database elsewhere requires re-entering the keys.
 - SMS and WhatsApp need a live provider account, valid credentials and an
   internet connection. The automated test uses a local mock gateway, so a real
-  delivery test must be done by the admin with their own accounts.
+  delivery test must be done by the admin with their own accounts. Sandbox
+  delivery is limited to numbers registered in the Africa's Talking sandbox.
+- Automatic reminders run only while the desktop app is open and an admin is
+  logged in. There is no Windows service or 24/7 scheduler yet.
+- Delivery receipts, inbound SMS replies, WhatsApp webhooks and voice calls /
+  voicemail need a public hosted relay. This phase stores provider message IDs so
+  those callbacks can be matched later, but it does not receive them.
+- Payment-confirmation-triggered receipts need MTN/Airtel/bank integrations. The
+  current receipt SMS is a manual action after verification.
 - WhatsApp plain-text messages work only inside Meta's 24-hour customer-service
   window; outside it, an approved template is required.
 - Cloud backup copies files to a folder maintained by OneDrive/Google Drive/

@@ -43,6 +43,7 @@ public final class IntegrationsSetupDialog {
 
     private final CheckBox smsEnabledBox = new CheckBox("Enable SMS delivery");
     private final ComboBox<MessagingService.SmsProvider> smsProviderBox = new ComboBox<>();
+    private final ComboBox<MessagingService.Environment> smsEnvironmentBox = new ComboBox<>();
     private final TextField smsUsernameField = new TextField(AppSettings.smsUsername());
     private final PasswordField smsApiKeyField = new PasswordField();
     private final TextField smsSenderField = new TextField(AppSettings.smsSenderId());
@@ -50,6 +51,7 @@ public final class IntegrationsSetupDialog {
     private final TextField smsUrlField = new TextField(AppSettings.smsGenericUrl());
     private final TextField smsCountryCodeField = new TextField(AppSettings.smsCountryCode());
     private final Label smsTestLabel = new Label();
+    private final Label smsConnectionLabel = new Label();
 
     private final CheckBox whatsappEnabledBox = new CheckBox("Enable WhatsApp delivery");
     private final TextField whatsappNumberField = new TextField(AppSettings.whatsappBusinessNumber());
@@ -59,6 +61,11 @@ public final class IntegrationsSetupDialog {
     private final TextField whatsappLanguageField = new TextField(AppSettings.whatsappTemplateLanguage());
     private final TextField whatsappUrlField = new TextField(AppSettings.whatsappApiUrl());
     private final Label whatsappTestLabel = new Label();
+
+    private final CheckBox autoTrackBox =
+        new CheckBox("Track every outbound message in the tenant communication history");
+    private final CheckBox autoSendBox =
+        new CheckBox("Send due reminders automatically while this app is open");
 
     private final CheckBox cloudEnabledBox = new CheckBox("Copy backups to my cloud folder");
     private final ComboBox<String> cloudProviderBox = new ComboBox<>();
@@ -108,8 +115,10 @@ public final class IntegrationsSetupDialog {
         tabs.setPrefHeight(400);
 
         Label footnote = new Label(
-            "SMS and WhatsApp need an internet connection. Provider credentials are stored " +
-            "locally in the app database, so use app-specific tokens and protect this PC.");
+            "SMS and WhatsApp need an internet connection. API keys/tokens are encrypted with " +
+            "Windows DPAPI, which ties them to this Windows user on this PC. A database restored " +
+            "on another PC will ask for the keys again. Use app-specific tokens and protect " +
+            "this PC and its backups.");
         footnote.getStyleClass().add("label-subtitle");
         footnote.setWrapText(true);
 
@@ -190,14 +199,20 @@ public final class IntegrationsSetupDialog {
         smsProviderBox.valueProperty().addListener((obs, old, value) -> updateSmsFields());
         box.getChildren().add(providerRow("SMS provider", smsProviderBox));
 
-        smsApiKeyField.setText(AppSettings.smsApiKey());
+        smsEnvironmentBox.getItems().setAll(MessagingService.Environment.values());
+        smsEnvironmentBox.setValue(
+            MessagingService.Environment.from(AppSettings.smsEnvironment()));
+        smsEnvironmentBox.setPrefWidth(180);
+        box.getChildren().add(providerRow("Environment", smsEnvironmentBox));
+
+        smsApiKeyField.setPromptText("Leave blank to keep the saved key");
 
         GridPane grid = grid();
         int row = 0;
         addRow(grid, row++, "Username / Account SID", smsUsernameField,
             "Africa's Talking username, or Twilio Account SID");
         addRow(grid, row++, "API key / Auth token", smsApiKeyField,
-            "Stored locally. Use an app-specific key, not your login password");
+            savedKeyHint(AppSettings.smsApiKeyRaw()));
         addRow(grid, row++, "Sender ID", smsSenderField,
             "Africa's Talking sender ID (optional but recommended)");
         addRow(grid, row++, "From number", smsFromField,
@@ -207,17 +222,38 @@ public final class IntegrationsSetupDialog {
         box.getChildren().add(grid);
 
         Label hint = subtitle(
-            "Africa's Talking: username + API key (+ sender ID). Twilio: Account SID + Auth " +
-            "token + From number. Generic: a URL; the API key is sent as a Bearer token.");
+            "Africa's Talking: username + API key (+ sender ID). The sandbox only delivers to " +
+            "numbers added to your sandbox app; production needs an approved sender ID. Twilio: " +
+            "Account SID + Auth token + From number. Generic: a URL; the API key is sent as a " +
+            "Bearer token. Saved keys are encrypted with Windows DPAPI and never shown again.");
         hint.setWrapText(true);
         box.getChildren().add(hint);
 
         Button testBtn = new Button("📨 Send Test SMS");
         testBtn.getStyleClass().add("btn-secondary");
         testBtn.setOnAction(e -> testSms(testBtn));
+
+        Button connectionBtn = new Button("🔌 Test Connection");
+        connectionBtn.getStyleClass().add("btn-secondary");
+        connectionBtn.setOnAction(e -> testSmsConnection(connectionBtn));
+
         smsTestLabel.getStyleClass().add("label-subtitle");
         smsTestLabel.setWrapText(true);
-        box.getChildren().add(new VBox(8, testBtn, smsTestLabel));
+        smsConnectionLabel.getStyleClass().add("label-subtitle");
+        smsConnectionLabel.setWrapText(true);
+        box.getChildren().add(new VBox(8,
+            new HBox(8, testBtn, connectionBtn), smsTestLabel, smsConnectionLabel));
+
+        Label automationTitle = new Label("Automation");
+        automationTitle.getStyleClass().add("label-section");
+        autoTrackBox.setSelected(AppSettings.autoTrackEnabled());
+        autoSendBox.setSelected(AppSettings.reminderAutoSendEnabled());
+        Label automationNote = subtitle(
+            "Automatic reminders only run while this desktop app is open (checked every "
+            + AppSettings.reminderSchedulerMinutes() + " minutes). Delivery reports, replies and "
+            + "voice callbacks need a hosted relay and are not active yet.");
+        automationNote.setWrapText(true);
+        box.getChildren().addAll(automationTitle, autoTrackBox, autoSendBox, automationNote);
 
         updateSmsFields();
         return box;
@@ -232,7 +268,7 @@ public final class IntegrationsSetupDialog {
         whatsappEnabledBox.setSelected(AppSettings.whatsappEnabled());
         box.getChildren().add(whatsappEnabledBox);
 
-        whatsappTokenField.setText(AppSettings.whatsappAccessToken());
+        whatsappTokenField.setPromptText("Leave blank to keep the saved token");
 
         GridPane grid = grid();
         int row = 0;
@@ -241,7 +277,7 @@ public final class IntegrationsSetupDialog {
         addRow(grid, row++, "Phone number ID", whatsappPhoneIdField,
             "Meta WhatsApp Cloud API phone number ID");
         addRow(grid, row++, "Access token", whatsappTokenField,
-            "Stored locally. Use a permanent system-user token");
+            savedKeyHint(AppSettings.whatsappAccessTokenRaw()));
         addRow(grid, row++, "Template name", whatsappTemplateField,
             "Optional. Needed outside Meta's 24-hour customer service window");
         addRow(grid, row++, "Template language", whatsappLanguageField,
@@ -340,18 +376,22 @@ public final class IntegrationsSetupDialog {
             return;
         }
 
+        String recipient = adminPhoneField.getText().trim();
+        String message = "Rental Management System: your SMS setup works.";
+
         button.setDisable(true);
         smsTestLabel.setText("Sending test SMS…");
         Task<MessagingService.Result> task = new Task<>() {
             @Override
             protected MessagingService.Result call() {
-                return MessagingService.sendSms(config, adminPhoneField.getText(),
-                    "Rental Management System: your SMS setup works.");
+                return MessagingService.sendSms(config, recipient, message);
             }
         };
         task.setOnSucceeded(e -> {
             button.setDisable(false);
             MessagingService.Result result = task.getValue();
+            com.rentals.service.NotificationService.recordTestMessage(
+                "SMS", recipient, message, result);
             smsTestLabel.setText((result.success() ? "✔ " : "✖ ") + result.detail());
             if (!result.success()) {
                 alert(Alert.AlertType.ERROR, "Test SMS failed:\n" + result.detail());
@@ -365,6 +405,41 @@ public final class IntegrationsSetupDialog {
                 + (error == null ? "unknown error" : error.getMessage()));
         });
         new Thread(task, "sms-test").start();
+    }
+
+    private void testSmsConnection(Button button) {
+        MessagingService.SmsConfig config = buildSmsConfig(true);
+        if (!config.isConfigured()) {
+            alert(Alert.AlertType.WARNING,
+                "Fill in the SMS provider details before testing the connection.");
+            return;
+        }
+
+        button.setDisable(true);
+        smsConnectionLabel.setText("Checking provider credentials…");
+        Task<MessagingService.TestResult> task = new Task<>() {
+            @Override
+            protected MessagingService.TestResult call() {
+                return MessagingService.testConnection(config);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            button.setDisable(false);
+            MessagingService.TestResult result = task.getValue();
+            smsConnectionLabel.setText((result.success() ? "✔ " : "✖ ") + result.detail());
+            if (!result.success()) {
+                alert(Alert.AlertType.ERROR, "Connection test failed:\n" + result.detail());
+            }
+        });
+        task.setOnFailed(e -> {
+            button.setDisable(false);
+            Throwable error = task.getException();
+            smsConnectionLabel.setText("✖ "
+                + (error == null ? "unknown error" : error.getMessage()));
+            alert(Alert.AlertType.ERROR, "Connection test failed: "
+                + (error == null ? "unknown error" : error.getMessage()));
+        });
+        new Thread(task, "sms-connection-test").start();
     }
 
     private void testWhatsApp(Button button) {
@@ -382,18 +457,20 @@ public final class IntegrationsSetupDialog {
             return;
         }
 
+        String message = "Rental Management System: your WhatsApp setup works.";
         button.setDisable(true);
         whatsappTestLabel.setText("Sending test WhatsApp message…");
         Task<MessagingService.Result> task = new Task<>() {
             @Override
             protected MessagingService.Result call() {
-                return MessagingService.sendWhatsApp(config, recipient,
-                    "Rental Management System: your WhatsApp setup works.");
+                return MessagingService.sendWhatsApp(config, recipient, message);
             }
         };
         task.setOnSucceeded(e -> {
             button.setDisable(false);
             MessagingService.Result result = task.getValue();
+            com.rentals.service.NotificationService.recordTestMessage(
+                "WHATSAPP", recipient, message, result);
             whatsappTestLabel.setText((result.success() ? "✔ " : "✖ ") + result.detail());
             if (!result.success()) {
                 alert(Alert.AlertType.ERROR, "Test WhatsApp failed:\n" + result.detail());
@@ -476,7 +553,7 @@ public final class IntegrationsSetupDialog {
 
         if (whatsappEnabledBox.isSelected()) {
             if (whatsappPhoneIdField.getText().isBlank()
-                || whatsappTokenField.getText().isBlank()) {
+                || effectiveWhatsappToken().isBlank()) {
                 return "WhatsApp is enabled but the phone number ID or access token is missing.\n" +
                     "Fill in the WhatsApp tab, or untick Enable WhatsApp delivery.";
             }
@@ -484,6 +561,14 @@ public final class IntegrationsSetupDialog {
             if (!url.startsWith("http://") && !url.startsWith("https://")) {
                 return "The WhatsApp API base URL must start with http:// or https://.";
             }
+        }
+
+        boolean smsReady = smsEnabledBox.isSelected() && buildSmsConfig(true).isConfigured();
+        boolean whatsappReady = whatsappEnabledBox.isSelected()
+            && buildWhatsAppConfig(true).isConfigured();
+        if (autoSendBox.isSelected() && !smsReady && !whatsappReady) {
+            return "Automatic reminders are enabled, but neither SMS nor WhatsApp is fully " +
+                "configured. Complete one channel or untick automatic sending.";
         }
 
         if (cloudEnabledBox.isSelected()) {
@@ -513,10 +598,13 @@ public final class IntegrationsSetupDialog {
         save("sms_provider", smsProviderBox.getValue() == null
                 ? "AFRICAS_TALKING" : smsProviderBox.getValue().name(),
             "SMS gateway: AFRICAS_TALKING, TWILIO or GENERIC");
+        save("sms_environment", smsEnvironmentBox.getValue() == null
+                ? "PRODUCTION" : smsEnvironmentBox.getValue().name(),
+            "Africa's Talking environment: SANDBOX or PRODUCTION");
         save("sms_username", smsUsernameField.getText(),
             "Africa's Talking username or Twilio Account SID");
-        save("sms_api_key", smsApiKeyField.getText(),
-            "SMS gateway API key or Twilio auth token");
+        saveSecretIfProvided("sms_api_key", smsApiKeyField.getText(),
+            "SMS gateway API key or Twilio auth token (DPAPI-encrypted)");
         save("sms_sender_id", smsSenderField.getText(),
             "Sender ID shown on SMS (Africa's Talking)");
         save("sms_from_number", smsFromField.getText(), "Twilio sender phone number");
@@ -530,8 +618,8 @@ public final class IntegrationsSetupDialog {
             "WhatsApp Cloud API base URL");
         save("whatsapp_phone_number_id", whatsappPhoneIdField.getText(),
             "Meta WhatsApp phone number ID");
-        save("whatsapp_access_token", whatsappTokenField.getText(),
-            "Meta WhatsApp Cloud API access token");
+        saveSecretIfProvided("whatsapp_access_token", whatsappTokenField.getText(),
+            "Meta WhatsApp Cloud API access token (DPAPI-encrypted)");
         save("whatsapp_business_number", whatsappNumberField.getText(),
             "WhatsApp business display number");
         save("whatsapp_template_name", whatsappTemplateField.getText(),
@@ -549,6 +637,10 @@ public final class IntegrationsSetupDialog {
             "Local folder synced by the cloud provider");
         save("cloud_auto_upload", String.valueOf(cloudAutoUploadBox.isSelected()),
             "Upload each new backup to the cloud folder automatically");
+        save("auto_track_enabled", String.valueOf(autoTrackBox.isSelected()),
+            "Record outbound messages in the tenant communication history");
+        save("reminder_auto_send_enabled", String.valueOf(autoSendBox.isSelected()),
+            "Send due reminders automatically while the app is open");
         save("integration_setup_complete", "true",
             "Whether the admin completed communication setup");
     }
@@ -557,15 +649,27 @@ public final class IntegrationsSetupDialog {
         settingsDAO.save(key, value == null ? "" : value.trim(), description);
     }
 
+    private void saveSecretIfProvided(String key, String value, String description) {
+        if (value == null || value.isBlank()) return;   // keep the existing key
+        if (!settingsDAO.saveSecret(key, value.trim(), description)) {
+            throw new IllegalStateException(
+                "Could not encrypt " + key + " with Windows DPAPI on this PC.");
+        }
+    }
+
     /* ==================== BUILDERS ==================== */
 
     private MessagingService.SmsConfig buildSmsConfig(boolean forceEnabled) {
+        MessagingService.Environment environment = smsEnvironmentBox.getValue() == null
+            ? MessagingService.Environment.from(AppSettings.smsEnvironment())
+            : smsEnvironmentBox.getValue();
         return new MessagingService.SmsConfig(
             forceEnabled || smsEnabledBox.isSelected(),
             smsProviderBox.getValue() == null
                 ? MessagingService.SmsProvider.AFRICAS_TALKING : smsProviderBox.getValue(),
+            environment,
             smsUsernameField.getText(),
-            smsApiKeyField.getText(),
+            effectiveSmsApiKey(),
             smsSenderField.getText(),
             smsFromField.getText(),
             smsUrlField.getText(),
@@ -577,10 +681,34 @@ public final class IntegrationsSetupDialog {
             forceEnabled || whatsappEnabledBox.isSelected(),
             whatsappUrlField.getText(),
             whatsappPhoneIdField.getText(),
-            whatsappTokenField.getText(),
+            effectiveWhatsappToken(),
             whatsappNumberField.getText(),
             whatsappTemplateField.getText(),
             whatsappLanguageField.getText());
+    }
+
+    /** A blank field means "keep the saved key", not "erase it". */
+    private String effectiveSmsApiKey() {
+        String typed = smsApiKeyField.getText();
+        return typed == null || typed.isBlank() ? AppSettings.smsApiKey() : typed.trim();
+    }
+
+    private String effectiveWhatsappToken() {
+        String typed = whatsappTokenField.getText();
+        return typed == null || typed.isBlank()
+            ? AppSettings.whatsappAccessToken() : typed.trim();
+    }
+
+    private String savedKeyHint(String stored) {
+        if (stored == null || stored.isBlank()) {
+            return "No key saved yet. Use an app-specific key, not your login password.";
+        }
+        if (!com.rentals.security.SecretStore.canDecrypt(stored)) {
+            return "A saved key exists but cannot be read on this PC. Enter it again.";
+        }
+        String plain = com.rentals.security.SecretStore.decrypt(stored);
+        return "Saved: " + com.rentals.security.SecretStore.mask(plain)
+            + ". Leave this field blank to keep it.";
     }
 
     private void updateSmsFields() {
@@ -595,6 +723,7 @@ public final class IntegrationsSetupDialog {
         smsSenderField.setDisable(!at);
         smsFromField.setDisable(!twilio);
         smsUrlField.setDisable(!generic);
+        smsEnvironmentBox.setDisable(!at);
     }
 
     private void updateCloudHint() {

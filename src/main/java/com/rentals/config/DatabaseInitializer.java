@@ -48,6 +48,29 @@ public class DatabaseInitializer {
             stmt.execute("CREATE TABLE IF NOT EXISTS notification_logs (notification_id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER REFERENCES tenants(tenant_id), message TEXT NOT NULL, channel TEXT, status TEXT DEFAULT 'PENDING', sent_at TEXT, created_at TEXT DEFAULT (datetime('now')))");
             try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN recipient TEXT"); } catch (SQLException e) {}
             try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN error_message TEXT"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN tenancy_id INTEGER REFERENCES tenancies(tenancy_id)"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN charge_id INTEGER REFERENCES rent_charges(charge_id)"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN payment_id INTEGER REFERENCES payments(payment_id)"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN rule_id INTEGER REFERENCES reminder_rules(rule_id)"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN event_type TEXT DEFAULT 'REMINDER'"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN provider TEXT"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN provider_message_id TEXT"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN provider_status TEXT"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE notification_logs ADD COLUMN dedupe_key TEXT"); } catch (SQLException e) {}
+            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_dedupe ON notification_logs(dedupe_key)");
+
+            // Per-tenant audit trail for every outbound SMS/WhatsApp attempt.
+            stmt.execute("CREATE TABLE IF NOT EXISTS communication_logs (" +
+                "communication_id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "tenant_id INTEGER REFERENCES tenants(tenant_id), " +
+                "tenancy_id INTEGER, charge_id INTEGER, payment_id INTEGER, notification_id INTEGER, " +
+                "event_type TEXT DEFAULT 'REMINDER', channel TEXT, direction TEXT DEFAULT 'OUTBOUND', " +
+                "recipient TEXT, message TEXT, status TEXT, provider TEXT, " +
+                "provider_message_id TEXT, provider_status TEXT, error_message TEXT, " +
+                "created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_comm_tenant ON communication_logs(tenant_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_comm_message ON communication_logs(provider_message_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_comm_created ON communication_logs(created_at)");
 
             stmt.execute("CREATE TABLE IF NOT EXISTS reminder_rules (rule_id INTEGER PRIMARY KEY AUTOINCREMENT, stage INTEGER NOT NULL, days_after_due INTEGER NOT NULL, channel TEXT DEFAULT 'EMAIL', message_template TEXT, enabled INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')))");
 
@@ -95,16 +118,22 @@ public class DatabaseInitializer {
                 "('admin_whatsapp', '', 'Administrator WhatsApp number')," +
                 "('sms_enabled', 'false', 'Enable SMS delivery through the configured gateway')," +
                 "('sms_provider', 'AFRICAS_TALKING', 'SMS gateway: AFRICAS_TALKING, TWILIO or GENERIC')," +
+                "('sms_environment', 'PRODUCTION', 'Africa''s Talking environment: SANDBOX or PRODUCTION')," +
                 "('sms_username', '', 'Africa''s Talking username or Twilio Account SID')," +
-                "('sms_api_key', '', 'SMS gateway API key or Twilio auth token')," +
+                "('sms_api_key', '', 'SMS gateway API key or Twilio auth token (DPAPI-encrypted)')," +
                 "('sms_sender_id', '', 'Sender ID shown on SMS (Africa''s Talking)')," +
                 "('sms_from_number', '', 'Twilio sender phone number')," +
                 "('sms_generic_url', '', 'Generic SMS gateway URL')," +
                 "('sms_country_code', '256', 'Country code used for local phone numbers')," +
+                "('sms_voice_number', '', 'Africa''s Talking voice number (reserved for hosted voice)')," +
+                "('voice_enabled', 'false', 'Enable automated voice/voicemail (requires a hosted relay)')," +
+                "('auto_track_enabled', 'true', 'Record outbound messages in the tenant communication history')," +
+                "('reminder_auto_send_enabled', 'false', 'Send due reminders automatically while the app is open')," +
+                "('reminder_scheduler_minutes', '15', 'How often the in-app reminder scheduler scans (minutes)')," +
                 "('whatsapp_enabled', 'false', 'Enable WhatsApp Cloud API delivery')," +
                 "('whatsapp_api_url', 'https://graph.facebook.com/v20.0', 'WhatsApp Cloud API base URL')," +
                 "('whatsapp_phone_number_id', '', 'Meta WhatsApp phone number ID')," +
-                "('whatsapp_access_token', '', 'Meta WhatsApp Cloud API access token')," +
+                "('whatsapp_access_token', '', 'Meta WhatsApp Cloud API access token (DPAPI-encrypted)')," +
                 "('whatsapp_business_number', '', 'WhatsApp business display number')," +
                 "('whatsapp_template_name', '', 'Approved WhatsApp template for first-contact messages')," +
                 "('whatsapp_template_language', 'en_US', 'WhatsApp template language code')," +
@@ -131,5 +160,9 @@ public class DatabaseInitializer {
             System.err.println("Database initialization failed: " + e.getMessage());
             e.printStackTrace();
         }
+
+        // Upgrade any credentials saved by older versions as plain text.
+        // Failures are reported but must not stop the application from starting.
+        com.rentals.security.SecretStore.migrateStoredSecrets();
     }
 }

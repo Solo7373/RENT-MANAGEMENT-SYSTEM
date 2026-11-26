@@ -55,10 +55,18 @@ real mobile-money reconciliation without the next phase of work.
 - Expenses, reporting, audit log, settings, payment-method toggles and database
   backup all read/write live data.
 - Reminder rules can be created, enabled/disabled and deleted; notifications can
-  be queued, sent through SMS/WhatsApp and tracked with recipient, status and
-  provider error.
-- A guided communication wizard collects the admin contact, SMS gateway,
-  WhatsApp Cloud API and cloud backup folder after first login and from Settings.
+  be queued, sent through SMS/WhatsApp and tracked with recipient, status, event
+  type, provider message ID and provider error.
+- An in-app scheduler sends due reminders while the app is open, picks the latest
+  applicable enabled rule per charge, deduplicates by rule + charge and retries
+  failed sends on the next scan.
+- A per-tenant communication history records outbound reminders, receipt SMS and
+  test messages with tenant/charge/payment links and provider metadata.
+- A guided communication wizard collects the admin contact, SMS gateway
+  (sandbox/production), WhatsApp Cloud API and cloud backup folder after first
+  login and from Settings.
+- SMS API keys and WhatsApp tokens are encrypted with Windows DPAPI and shown
+  only as a masked suffix; legacy plain-text keys are migrated at startup.
 - Cloud backups copy each verified zip and checksum into a OneDrive/Google
   Drive/Dropbox sync folder and prune old cloud copies by retention.
 - Application data lives in `%APPDATA%\RentalManagementSystem`, so the packaged
@@ -73,15 +81,17 @@ real mobile-money reconciliation without the next phase of work.
 - CSS-based theming; views are plain JavaFX panes, no popups for navigation.
 - Settings includes dedicated **Billing & Company**, **Communication** and
   **Backup** tabs, plus the raw key/value editor for advanced changes.
-- The communication wizard asks for the admin contact, SMS provider, WhatsApp
-  Cloud API and cloud sync folder, with test buttons and validation.
-- Payments exposes **Receipt** and **Apply Late Fees** actions; Reports has an
-  export bar for all report types; Tenants has a **Documents** dialog;
-  Reminders has **Send Now** and recipient/error columns.
+- The communication wizard asks for the admin contact, SMS provider and
+  environment, WhatsApp Cloud API and cloud sync folder, with Test Connection,
+  test-message buttons and validation.
+- Payments exposes **Receipt**, **SMS Receipt** and **Apply Late Fees** actions;
+  Reports has an export bar for all report types; Tenants has **Documents** and
+  **Communication History** dialogs; Reminders has **Send Now**,
+  **Run Due Reminders Now**, provider columns and scheduler status.
 
 ### Automated backend verification
-The original 25-check smoke test still passes, and the expanded Now-phase test
-passes **83/83** checks in an isolated data folder:
+The original 25-check smoke test still passes, and the expanded test passes
+**116/116** checks in an isolated data folder:
 
 1. data folder override and schema creation
 2. company/currency/due-day/grace/late-fee/receipt/retention settings reload
@@ -96,13 +106,17 @@ passes **83/83** checks in an isolated data folder:
 11. PDF monthly-revenue and expense exports
 12. tenant document attach/list/delete and tenant-folder cleanup
 13. admin contact, SMS/WhatsApp/cloud settings and setup completion
-14. phone normalisation with the default country code
-15. SMS and WhatsApp sends through a local mock HTTP gateway
-16. reminder delivery status, recipient, provider error and failure handling
-17. unconfigured email handling
-18. zip backup creation, checksum verification, document inclusion and retention
-19. cloud folder testing, upload, checksum verification and cloud retention
-20. scheduled pruning of older backups
+14. DPAPI credential encryption, decryption, masking and plain-text migration
+15. phone normalisation with the default country code
+16. SMS/WhatsApp test sends and Test Connection through a local mock gateway
+17. reminder delivery status, recipient, provider error and failure handling
+18. per-tenant communication history and provider metadata
+19. receipt SMS for verified payments and unverified-payment rejection
+20. scheduler opt-in, rule selection, rendering, dedupe and retry
+21. unconfigured email handling
+22. zip backup creation, checksum verification, document inclusion and retention
+23. cloud folder testing, upload, checksum verification and cloud retention
+24. scheduled pruning of older backups
 
 ---
 
@@ -183,28 +197,43 @@ company details and receipt prefix.
 These are the areas where "just add a button" is not enough. They depend on
 external services, money, approvals or a different architecture.
 
-### 4.1 SMS and WhatsApp delivery
-**Current state:** SMS delivery is implemented for Africa's Talking, Twilio and a
-generic HTTP gateway. WhatsApp delivery uses Meta's WhatsApp Cloud API. A guided
-wizard collects the administrator's contact details and each provider's
-credentials, tests the configuration and saves it. Queued reminders can be sent
-from the Reminders screen; the recipient, status and provider error are stored.
+### 4.1 SMS, WhatsApp and reminders
+**Current state:** SMS delivery is implemented for Africa's Talking (sandbox and
+production), Twilio and a generic HTTP gateway. WhatsApp delivery uses Meta's
+WhatsApp Cloud API. A guided wizard collects the administrator's contact details
+and each provider's credentials, tests the connection and saves encrypted keys.
+Queued reminders can be sent from the Reminders screen; the recipient, status,
+event type, provider message ID and provider error are stored.
+
+An opt-in in-app scheduler scans every 15 minutes while an admin is logged in,
+selects the latest applicable enabled rule for each outstanding charge, renders
+the template and sends once per rule + charge. A unique dedupe key prevents
+repeats and is cleared on failure so the next scan can retry. Receipt SMS can be
+sent manually after a payment is verified. Every attempt can be reviewed in the
+tenant's communication history.
 
 **What still makes it hard:**
 - The admin must have a funded provider account, approved sender ID and valid
-  API credentials. RentalSys cannot create those accounts.
-- SMS and WhatsApp both require an internet connection and the desktop app to be
-  open when **Send Now** is pressed. Nothing is sent while the app is closed.
+  API credentials. RentalSys cannot create those accounts. Africa's Talking's
+  sandbox only delivers to numbers registered in its sandbox app.
+- Automatic sending only runs while the desktop app is open and an admin is
+  logged in. There is no Windows service or 24/7 scheduler, so reminders due
+  while the app is closed wait until it is opened.
 - WhatsApp plain-text messages only work inside Meta's 24-hour customer-service
   window. Outside that window an approved template must be supplied and approved
   by Meta. Template review is outside the app's control.
 - There is no webhook server, so the app records the provider's immediate HTTP
   response but not later delivery receipts or read receipts.
+- Inbound SMS replies, WhatsApp webhooks and voice calls/voicemail/recordings
+  need a public hosted relay. Phase 1 deliberately scopes these out; provider
+  message IDs are stored so callbacks can be matched later.
 - Email is still not delivered; those reminders can only be marked sent manually.
 
-**Can it work later?** SMS/WhatsApp can work today with real accounts. Email
-would need an SMTP/transactional provider. Scheduled sending when the app is
-closed would need Windows Task Scheduler or a small always-on server.
+**Can it work later?** SMS/WhatsApp work today with real accounts. Email would
+need an SMTP/transactional provider. Delivery callbacks, inbound messages and
+voice need a small hosted webhook relay plus a public HTTPS endpoint. Truly
+scheduled sending when the app is closed needs Windows Task Scheduler or an
+always-on server.
 
 ### 4.2 Mobile money and bank integrations (MTN MoMo, Airtel Money, banks)
 **Current state:** the payment method is a label on a manually recorded
@@ -422,14 +451,23 @@ processes. For this desktop app, folder sync is the pragmatic option.
    delivery from Reminders, with recipient/status/error tracking. ✅
 10. Cloud backup copy into a OneDrive/Google Drive/Dropbox sync folder, with
     checksum verification and retention. ✅
+11. Africa's Talking sandbox/production environments, Test Connection and
+    provider message ID/status capture. ✅
+12. Windows DPAPI encryption for SMS/WhatsApp credentials, masked display and
+    automatic migration of legacy plain-text keys. ✅
+13. Per-tenant communication history and manual receipt SMS for verified
+    payments. ✅
+14. In-app scheduler for due reminders with latest-rule selection, rule + charge
+    dedupe, retry after failure and a manual Run Now action. ✅
 
 ### Next (moderate)
 1. Date-range filters on reports and a tenant statement PDF.
 2. Email reminders via SMTP, with a retry/status column.
-3. Automatically generate reminders from overdue charges, with de-duplication.
+3. Payment-confirmation-triggered receipt SMS once mobile-money/bank APIs exist.
 4. Background/scheduled reminder sending when the app is closed (Task Scheduler
    or a small server).
-5. WhatsApp delivery-receipt webhook and template management.
+5. Hosted webhook relay for delivery receipts, inbound SMS/WhatsApp replies and
+   WhatsApp template management.
 6. Staff accounts and role checks (ADMIN vs STAFF).
 7. Windows Task Scheduler integration for monthly charges/backups/reminders.
 8. Basic tests wired into `mvn test` (the smoke tests are a good starting point).
@@ -462,10 +500,13 @@ processes. For this desktop app, folder sync is the pragmatic option.
   accidental corruption, not deliberate tampering.
 - Generated receipts and report exports also contain tenant and financial data
   and are stored unencrypted in the user profile.
-- SMS/WhatsApp API keys, tokens and the cloud folder/account label are stored
-  unencrypted in `system_settings`. They are masked in the setup screens, but
-  anyone with the database or a backup can read them. Use app-specific tokens and
-  keep the PC and backups protected.
+- SMS/WhatsApp API keys, tokens and the cloud folder/account label are stored in
+  `system_settings`. API keys and tokens are encrypted with Windows DPAPI (tied to
+  the current Windows user and PC) and shown only as a masked suffix. The cloud
+  folder/account label remains plain text. DPAPI is not a substitute for full
+  database encryption: use app-specific tokens, and keep the PC and backups
+  protected. A database restored for another Windows user or PC cannot decrypt the
+  saved keys and will ask for them again.
 - Cloud backups copy tenant data into a folder synchronised by OneDrive, Google
   Drive or Dropbox. That sends the data through the provider's service; the
   operator must accept the provider's location, retention and privacy terms.
@@ -490,31 +531,36 @@ cd rental-management-system
 powershell -ExecutionPolicy Bypass -File .\verify.ps1
 ```
 
-The test prints each check and finishes with `Result: 83 passed, 0 failed`. It
+The test prints each check and finishes with `Result: 116 passed, 0 failed`. It
 exercises settings, due dates, late fees, allocation, PDF receipts, CSV/PDF
-exports, documents, backup checksums/retention, phone normalisation, SMS/WhatsApp
-sending through a local mock gateway, reminder status/error recording and cloud
+exports, documents, DPAPI credential encryption/migration, phone normalisation,
+SMS/WhatsApp test sends and Test Connection through a local mock gateway, reminder
+status/error and provider metadata, tenant communication history, receipt SMS,
+scheduler rule selection/dedupe/retry, backup checksums/retention and cloud
 upload/checksum/retention. The test source is in `tools/NowPhaseSmokeTest.java`.
 
 GUI checks performed in this pass:
 1. Launch the app and log in with `admin` / `admin123`.
 2. Dashboard loads with live cards.
 3. The communication setup wizard opens on first login and its Admin Contact,
-   SMS, WhatsApp and Cloud Backup tabs render.
-4. Settings -> Communication: admin/SMS/WhatsApp/cloud status renders and the
-   wizard launcher works.
+   SMS, WhatsApp and Cloud Backup tabs render, including the SMS environment
+   selector, masked-key hints, Test Connection and automation toggles.
+4. Settings -> Communication: admin/SMS/WhatsApp/cloud/automation status renders
+   and the wizard launcher refreshes the status after saving.
 5. Settings -> Billing & Company: fields load, save and the formatting preview
    updates.
 6. Settings -> Backup: the improved backup screen renders, lists backups and
    shows the cloud summary/actions.
-7. Reminders: the Send Now action, recipient/error columns and Communication
-   Setup button render.
-8. Payments: Receipt and Apply Late Fees actions are present.
+7. Reminders: the Send Now action, Run Due Reminders Now action, provider/event
+   columns, scheduler status and Communication Setup button render.
+8. Payments: Receipt, SMS Receipt and Apply Late Fees actions are present, and
+   SMS Receipt refuses a payment that is not verified.
 9. Reports: the export report selector and CSV/PDF buttons are present.
-10. Tenants: the Documents action is present.
+10. Tenants: the Documents and Communication History actions are present.
 11. Launch `dist\Rental Management System\Rental Management System.exe` and
-    confirm it creates/uses `%APPDATA%\RentalManagementSystem\rentaldb.sqlite`
-    and opens the communication setup wizard.
+    confirm it creates/uses `%APPDATA%\RentalManagementSystem\rentaldb.sqlite`,
+    migrates an existing database (including the new communication_logs table and
+    notification columns) and opens the communication setup wizard.
 
 ---
 
@@ -523,15 +569,17 @@ GUI checks performed in this pass:
 **What works now:** the complete local rental workflow, with correct rent-charge
 and payment-allocation math, reports, expenses, audit, PDF receipts, CSV/PDF
 exports, configurable billing/company settings, local tenant documents,
-consistent checksummed backups, admin/SMS/WhatsApp communication setup and real
-SMS/WhatsApp sending, cloud-folder backup copies, a polished light/dark UI and a
-portable `jpackage` app image - verified by **83 automated checks** plus rendered
+consistent checksummed backups, DPAPI-protected admin/SMS/WhatsApp communication
+setup, real SMS/WhatsApp sending with provider metadata, a per-tenant
+communication history, manual receipt SMS, an in-app due-reminder scheduler with
+dedupe/retry, cloud-folder backup copies, a polished light/dark UI and a
+portable `jpackage` app image - verified by **116 automated checks** plus rendered
 UI inspection.
 
-**What is hard:** anything that must run while the app is closed (scheduled
-sending), delivery-receipt webhooks, SMTP email, mobile-money/bank APIs,
-multi-user database sync, encrypted storage/privacy, legal tax/VAT receipts and
-installer signing. SMS/WhatsApp themselves now work, but only with a real
+**What is hard:** anything that must run while the app is closed (24/7 scheduled
+sending), delivery-receipt/inbound/voice webhooks, SMTP email, mobile-money/bank
+APIs, multi-user database sync, encrypted storage/privacy, legal tax/VAT receipts
+and installer signing. SMS/WhatsApp themselves now work, but only with a real
 provider account, approved sender/template and internet access.
 
 **What is missing:** staff roles, password recovery, automatic late-fee
@@ -539,6 +587,6 @@ scheduling, deposit refunds, date-range report filters, tenant statements,
 backup restore wizard, encrypted backups and email delivery.
 
 **What to add next:** date-range reports and tenant statements, encrypted
-backup/restore, SMTP email reminders, WhatsApp delivery-receipt webhooks,
-scheduled maintenance, then - only if the business justifies it - a server
-backend and payment integrations.
+backup/restore, SMTP email reminders, a hosted relay for delivery receipts and
+inbound replies, scheduled maintenance, then - only if the business justifies it -
+a server backend and payment integrations.
